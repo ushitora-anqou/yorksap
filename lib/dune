@@ -1,0 +1,5 @@
+(library
+ (name yorksap)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.make))
+ (libraries fmt logs mirage-clock-unix ptime yojson))
