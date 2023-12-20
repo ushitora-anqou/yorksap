@@ -2,6 +2,7 @@ let server () = ()
 
 let () =
   Yorksap.Logg.setup ();
+  Random.self_init ();
 
   let open Cmdliner in
   let cmd =
