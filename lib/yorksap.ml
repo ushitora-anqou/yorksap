@@ -2,10 +2,6 @@ module Logg = Logg
 module Int_map = Map.Make (Int)
 
 module type S = sig
-  module Error : sig
-    type t
-  end
-
   module Loc : sig
     type t
 
@@ -31,8 +27,8 @@ module type S = sig
     type t
 
     val empty : t
-    val add_loc : Loc.t -> t -> (t, Error.t) result
-    val add_link : Link.t -> t -> (t, Error.t) result
+    val add_loc : Loc.t -> t -> (t, [ `Duplicate ]) result
+    val add_link : Link.t -> t -> (t, [ `Duplicate ]) result
     val get_links : src:Loc.t -> t -> Link.t list
     val show : t -> string
     val pp : Format.formatter -> t -> unit
@@ -63,7 +59,7 @@ module type S = sig
     val role : t -> role
     val loc : t -> Loc.t
     val ticket_set : t -> TicketSet.t
-    val move : Move.t -> t -> (t, Error.t) result
+    val move : Move.t -> t -> (t, [ `InvalidMove | `NoTicket ]) result
     val show : t -> string
     val pp : Format.formatter -> t -> unit
   end
@@ -71,23 +67,32 @@ module type S = sig
   module History : sig
     type t
 
+    type entry =
+      [ `Hidden of [ `Taxi | `Bus | `Ug | `Secret ] | Move.single ] option
+
     val make : init_locs:Loc.t list -> unit -> t
     val add : Move.t -> t
+    val get_view : from:Agent.role -> t -> Loc.t list * entry list
+    (*
     val get : agent_id:int -> clock:int -> t -> Move.single option
     (* agent_id is 0 (Mr.X) or 1-4 (police). clock is 1 through 24. *)
+    *)
   end
 
   module Game : sig
     type t
 
     val make : init_locs:Loc.t list -> map:Map.t -> unit -> t
+    val is_finished : t -> bool
     val agents : t -> Agent.t list
     val history : t -> History.t
     val turn : t -> int (* Turn 0 is Mr.X's. Turn 1 through 4 are police's. *)
     val clock : t -> int (* 1 through 24 *)
-    val move_agent : Move.t -> t -> (t, Error.t) result
+    val move_agent : Move.t -> t -> (t, [ `InvalidMove | `NoTicket ]) result
+    val derive_possible_moves : t -> Move.t list
     val show : t -> string
     val to_yojson : t -> Yojson.Safe.t
+    val of_yojson : Yojson.Safe.t -> t
   end
 end
 
@@ -119,6 +124,7 @@ module Farray : Farray_S = struct
   let ( .@()<- ) = assign
 end
 
+(*
 module M = struct
   module Error = struct
     type t = |
@@ -302,6 +308,7 @@ module M = struct
       Ok t
   end
 end
+*)
 
 module Test (Yrksp : S) = struct
   open Yrksp
@@ -317,14 +324,15 @@ module Test (Yrksp : S) = struct
     |> List.fold_left (fun m i -> m >>= loc i) (Ok Map.empty)
     >>= link 1 `Taxi 8 >>= link 1 `Taxi 9 >>= link 1 `Bus 58 >>= link 1 `Bus 46
     >>= link 1 `Ug 46 >>= link 115 `Boat 108 >>= link 108 `Bus 105
-    |> Result.get_ok
+    >>= link 115 `Taxi 127 |> Result.get_ok
 
   let test_game () =
     let init_mr_x_loc = Loc.make ~id:155 () in
     let init_police_locs =
-      [ 138; 50; 53; 198 ] |> List.map (fun id -> Loc.make ~id ())
+      [ 138; 50; 53; 198; 155 ] |> List.map (fun id -> Loc.make ~id ())
     in
-    let g = Game.make ~init_locs:(init_mr_x_loc :: init_police_locs) ~map () in
+    let init_locs = init_mr_x_loc :: init_police_locs in
+    let g = Game.make ~init_locs ~map () in
 
     assert (
       map
@@ -350,9 +358,7 @@ module Test (Yrksp : S) = struct
       init_police_locs
     |> List.iter (fun (g, e) -> assert (g = e));
 
-    assert (Game.agents g |> List.length = 5);
-    assert (Game.history g |> History.get ~agent_id:0 ~clock:0 |> Option.is_some);
-    assert (Game.history g |> History.get ~agent_id:0 ~clock:1 |> Option.is_none);
+    assert (Game.agents g |> List.length = 6);
     assert (Game.turn g = 0);
     assert (Game.clock g = 1);
 
@@ -372,73 +378,77 @@ module Test (Yrksp : S) = struct
     assert (Game.clock g = 1);
     assert (Game.agents g |> List.hd |> Agent.loc = new_mr_x_loc);
     assert ((Game.agents g |> List.hd |> Agent.ticket_set).taxi = 11);
-    assert (Game.history g |> History.get ~agent_id:1 ~clock:1 |> Option.is_none);
-
     assert (
-      Yojson.Safe.equal (Game.to_yojson g)
-        (`Assoc
-          [
-            ("turn", `Int 0);
-            ("clock", `Int 1);
-            ( "history",
-              `List
-                [
-                  `List [ `Int 155; `Int 138; `Int 50; `Int 53; `Int 198 ];
-                  `List [ `List [ `String "taxi"; `Int 156 ] ];
-                ] );
-            ( "agent",
-              `List
-                [
-                  `Assoc
-                    [
-                      ("loc", `Int 156);
-                      ( "tickets",
-                        `List [ `Int 11; `Int 9; `Int 4; `Int 5; `Int 2 ] );
-                    ];
-                  `Assoc
-                    [
-                      ("loc", `Int 138);
-                      ( "tickets",
-                        `List [ `Int 10; `Int 8; `Int 4; `Int 0; `Int 0 ] );
-                    ];
-                  `Assoc
-                    [
-                      ("loc", `Int 50);
-                      ( "tickets",
-                        `List [ `Int 10; `Int 8; `Int 4; `Int 0; `Int 0 ] );
-                    ];
-                  `Assoc
-                    [
-                      ("loc", `Int 53);
-                      ( "tickets",
-                        `List [ `Int 10; `Int 8; `Int 4; `Int 0; `Int 0 ] );
-                    ];
-                  `Assoc
-                    [
-                      ("loc", `Int 198);
-                      ( "tickets",
-                        `List [ `Int 10; `Int 8; `Int 4; `Int 0; `Int 0 ] );
-                    ];
-                ] );
-          ]));
+      Game.history g
+      |> History.get_view ~from:`MrX
+      = (init_locs, [ Some (`Taxi new_mr_x_loc) ]));
+    ()
+
+  let test_invalid_move () =
+    let g =
+      Game.make
+        ~init_locs:[ Loc.make ~id:115 (); Loc.make ~id:1 (); Loc.make ~id:8 () ]
+        ~map ()
+    in
+    let g = Game.move_agent (`Taxi (Loc.make ~id:127 ())) g |> Result.get_ok in
+    let res = Game.move_agent (`Taxi (Loc.make ~id:8 ())) g in
+    assert (Result.is_error res);
+    ()
+
+  let test_game_finished () =
+    let g =
+      Game.make ~init_locs:[ Loc.make ~id:9 (); Loc.make ~id:8 () ] ~map ()
+    in
+    assert (not (Game.is_finished g));
+    let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> Result.get_ok in
+    assert (not (Game.is_finished g));
+    let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> Result.get_ok in
+    assert (Game.is_finished g);
     ()
 
   let test_use_boat () =
-    let g = Game.make ~init_locs:[ Loc.make ~id:115 () ] ~map () in
+    let init_locs = [ Loc.make ~id:115 () ] in
+    let g = Game.make ~init_locs ~map () in
     let new_loc = Loc.make ~id:108 () in
     let g = Game.move_agent (`Secret new_loc) g |> Result.get_ok in
     assert (Game.agents g |> List.hd |> Agent.loc = new_loc);
     assert ((Game.agents g |> List.hd |> Agent.ticket_set).secret = 4);
     assert (
       Game.history g
-      |> History.get ~agent_id:0 ~clock:1
-      = Some (`Secret new_loc));
+      |> History.get_view ~from:`MrX
+      = (init_locs, [ Some (`Secret new_loc) ]));
+    ()
+
+  let test_open_locs () =
+    let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
+    let g =
+      let ( >>= ) = Result.bind in
+      Game.make ~init_locs ~map ()
+      |> Result.ok
+      >>= Game.move_agent (`Taxi (Loc.make ~id:114 ()))
+      >>= Game.move_agent (`Taxi (Loc.make ~id:8 ()))
+      >>= Game.move_agent (`Taxi (Loc.make ~id:115 ()))
+      >>= Game.move_agent (`Taxi (Loc.make ~id:1 ()))
+      >>= Game.move_agent (`Taxi (Loc.make ~id:114 ()))
+      |> Result.get_ok
+    in
+    assert (
+      match Game.history g |> History.get_view ~from:`Police |> snd with
+      | [
+       Some (`Hidden `Taxi);
+       Some (`Taxi _);
+       Some (`Hidden `Taxi);
+       Some (`Taxi _);
+       Some (`Taxi last_loc);
+      ]
+        when last_loc = Loc.make ~id:114 () ->
+          true
+      | _ -> false);
     ()
 
   let test_use_double_move () =
-    let g =
-      Game.make ~init_locs:[ Loc.make ~id:115 (); Loc.make ~id:1 () ] ~map ()
-    in
+    let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
+    let g = Game.make ~init_locs ~map () in
     let new_loc1 = Loc.make ~id:108 () in
     let new_loc2 = Loc.make ~id:105 () in
     let g =
@@ -452,16 +462,110 @@ module Test (Yrksp : S) = struct
     assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 8);
     assert (
       Game.history g
-      |> History.get ~agent_id:0 ~clock:1
-      = Some (`Secret new_loc1));
-    assert (
-      Game.history g |> History.get ~agent_id:0 ~clock:2 = Some (`Bus new_loc2));
+      |> History.get_view ~from:`MrX
+      = (init_locs, [ Some (`Secret new_loc1); None; Some (`Bus new_loc2) ]));
 
     let new_loc = Loc.make ~id:8 () in
     let g = Game.move_agent (`Taxi new_loc) g |> Result.get_ok in
-    assert (Game.history g |> History.get ~agent_id:1 ~clock:1 = None);
     assert (
-      Game.history g |> History.get ~agent_id:1 ~clock:2 = Some (`Taxi new_loc));
+      Game.history g
+      |> History.get_view ~from:`MrX
+      = ( init_locs,
+          [
+            Some (`Secret new_loc1);
+            None;
+            Some (`Bus new_loc2);
+            Some (`Taxi new_loc);
+          ] ));
 
+    ()
+
+  let get_api_v1_game ~game_id:_ =
+    let split_list n l =
+      l
+      |> List.fold_left
+           (fun acc x ->
+             if List.length (List.hd acc) < n then
+               (x :: List.hd acc) :: List.tl acc
+             else List.rev (List.hd acc) :: List.tl acc)
+           [ [] ]
+      |> List.rev
+    in
+    let move_single_to_string = function
+      | `Taxi _ -> "taxi"
+      | `Bus _ -> "bus"
+      | `Ug _ -> "ug"
+      | `Secret _ -> "secret"
+    in
+    let move_single_to_string' = function
+      | `Taxi -> "taxi"
+      | `Bus -> "bus"
+      | `Ug -> "ug"
+      | `Secret -> "secret"
+    in
+
+    let serialized_game = "" (* Retrieved by game_id *) in
+    let is_mr_x = false (* Retrieved by session *) in
+    let g = serialized_game |> Yojson.Safe.from_string |> Game.of_yojson in
+    let history_entry_to_yojson = function
+      | None -> `Null
+      | Some (`Hidden v) ->
+          `List [ `String "hidden"; `String (move_single_to_string' v) ]
+      | Some ((`Taxi loc | `Bus loc | `Ug loc | `Secret loc) as v) ->
+          `List [ `String (move_single_to_string v); `Int (Loc.id loc) ]
+    in
+    let agent_to_yojson agent =
+      `Assoc
+        [
+          ("loc", `Int (agent |> Agent.loc |> Loc.id));
+          ( "tickets",
+            let ts = agent |> Agent.ticket_set in
+            `List
+              [
+                `Int ts.taxi;
+                `Int ts.bus;
+                `Int ts.ug;
+                `Int ts.secret;
+                `Int ts.double;
+              ] );
+        ]
+    in
+    let history_to_yojson ~from ~num_agents history =
+      let init_locs, moves = history |> History.get_view ~from in
+      `List
+        (`List (init_locs |> List.map (fun l -> `Int (Loc.id l)))
+        :: (moves |> split_list num_agents
+           |> List.map (List.map history_entry_to_yojson)
+           |> List.map (fun xs -> `List xs)))
+    in
+    let move_to_yojson (move : Move.t) : Yojson.Safe.t =
+      let rec aux : Move.t -> Yojson.Safe.t = function
+        | (`Taxi loc | `Bus loc | `Ug loc | `Secret loc) as x ->
+            `List [ `String (move_single_to_string x); `Int (Loc.id loc) ]
+        | `Double (first, second) ->
+            `List
+              [
+                `String "double"; aux (first :> Move.t); aux (second :> Move.t);
+              ]
+      in
+      aux move
+    in
+    let _ : Yojson.Safe.t =
+      `Assoc
+        [
+          ("turn", `Int (Game.turn g));
+          ("clock", `Int (Game.clock g));
+          ("is_finished", `Bool (Game.is_finished g));
+          ("agents", `List (g |> Game.agents |> List.map agent_to_yojson));
+          ( "history",
+            g |> Game.history
+            |> history_to_yojson
+                 ~from:(if Game.is_finished g || is_mr_x then `MrX else `Police)
+                 ~num_agents:(g |> Game.agents |> List.length) );
+          ( "possible_moves",
+            `List (g |> Game.derive_possible_moves |> List.map move_to_yojson)
+          );
+        ]
+    in
     ()
 end
