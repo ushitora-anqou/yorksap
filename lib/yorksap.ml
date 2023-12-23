@@ -1,8 +1,11 @@
 module Logg = Logg
-module Int_map = Map.Make (Int)
+
+module Int_map = struct
+  include Map.Make (Int)
+end
 
 module type S = sig
-  module Loc : sig
+  module type Loc_sig = sig
     type t
 
     val make : id:int -> unit -> t
@@ -11,7 +14,9 @@ module type S = sig
     val pp : Format.formatter -> t -> unit
   end
 
-  module Link : sig
+  module Loc : Loc_sig
+
+  module type Link_sig = sig
     type t
     type transport = [ `Taxi | `Bus | `Ug | `Boat ]
 
@@ -23,7 +28,9 @@ module type S = sig
     val pp : Format.formatter -> t -> unit
   end
 
-  module Map : sig
+  module Link : Link_sig
+
+  module type Map_sig = sig
     type t
 
     val empty : t
@@ -33,6 +40,8 @@ module type S = sig
     val show : t -> string
     val pp : Format.formatter -> t -> unit
   end
+
+  module Map : Map_sig
 
   module TicketSet : sig
     type t = { taxi : int; bus : int; ug : int; secret : int; double : int }
@@ -71,12 +80,15 @@ module type S = sig
       [ `Hidden of [ `Taxi | `Bus | `Ug | `Secret ] | Move.single ] option
 
     val make : init_locs:Loc.t list -> unit -> t
-    val add : Move.t -> t
+    val add : Move.t -> t -> t
     val get_view : from:Agent.role -> t -> Loc.t list * entry list
+
     (*
     val get : agent_id:int -> clock:int -> t -> Move.single option
     (* agent_id is 0 (Mr.X) or 1-4 (police). clock is 1 through 24. *)
     *)
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
   end
 
   module Game : sig
@@ -124,24 +136,48 @@ module Farray : Farray_S = struct
   let ( .@()<- ) = assign
 end
 
-(*
 module M = struct
-  module Error = struct
-    type t = |
-  end
+  module Loc : sig
+    type t
 
-  module Loc = struct
+    val make : id:int -> unit -> t
+    val id : t -> int
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
     type t = int
 
     let make ~id () = id
     let id x = x
     let show x = string_of_int x
     let pp fmt x = Format.pp_print_int fmt x
+
+    let of_yojson x =
+      Yojson.Safe.Util.to_int_option x
+      |> Option.to_result ~none:"invalid loc yojson"
+
+    let to_yojson x = `Int x
   end
 
-  module Link = struct
-    type transport = [ `Taxi | `Bus | `Ug | `Boat ] [@@deriving show]
-    type t = { src : int; dst : int; by : transport } [@@deriving show]
+  module Link : sig
+    type t
+    type transport = [ `Taxi | `Bus | `Ug | `Boat ]
+
+    val make : src:Loc.t -> dst:Loc.t -> by:transport -> unit -> t
+    val src : t -> Loc.t
+    val dst : t -> Loc.t
+    val by : t -> transport
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
+    type transport = [ `Taxi | `Bus | `Ug | `Boat ] [@@deriving show, yojson]
+
+    type t = { src : Loc.t; dst : Loc.t; by : transport }
+    [@@deriving show, yojson]
 
     let make ~src ~dst ~by () = { src; dst; by }
     let src { src; _ } = src
@@ -149,68 +185,165 @@ module M = struct
     let by { by; _ } = by
   end
 
-  module Map = struct
-    type t = {
-      locs : Loc.t list Int_map.t; [@opaque]
-      links : Link.t list Int_map.t; [@opaque]
-    }
-    [@@deriving show]
+  module Map : sig
+    type t
 
-    let empty = { locs = Int_map.empty; links = Int_map.empty }
+    val empty : t
+    val add_link : Link.t -> t -> (t, [ `Duplicate ]) result
+    val get_links : src:Loc.t -> t -> Link.t list
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+  end = struct
+    type t = { links : Link.t list Int_map.t [@opaque] } [@@deriving show]
 
-    let add_loc loc map =
-      {
-        map with
-        locs =
-          map.locs
-          |> Int_map.update (Loc.id loc) (function
-               | None -> Some []
-               | Some locs -> Some (loc :: locs));
-      }
+    let empty = { links = Int_map.empty }
 
     let add_link link map =
-      {
-        map with
-        links =
-          map.links
-          |> Int_map.update
-               (link |> Link.src |> Loc.id)
-               (function None -> Some [] | Some links -> Some (link :: links));
-      }
+      Ok
+        {
+          links =
+            map.links
+            |> Int_map.update
+                 (link |> Link.src |> Loc.id)
+                 (function
+                   | None -> Some [] | Some links -> Some (link :: links));
+        }
 
     let get_links ~src map =
       map.links |> Int_map.find_opt (Loc.id src) |> Option.value ~default:[]
   end
 
-  module Ticket = struct
-    type basic = [ `Taxi | `Bus | `Ug | `Secret ] [@@deriving show]
-    type t = [ basic | `Double of basic * basic ] [@@deriving show]
+  module Ticket_set : sig
+    type t = { taxi : int; bus : int; ug : int; secret : int; double : int }
 
-    type set = { taxi : int; bus : int; ug : int; secret : int; double : int }
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
+    type t = { taxi : int; bus : int; ug : int; secret : int; double : int }
+    [@@deriving show, yojson]
+  end
+
+  module rec Move : sig
+    type single =
+      [ `Taxi of Loc.t | `Bus of Loc.t | `Ug of Loc.t | `Secret of Loc.t ]
+
+    type single_with_hidden = [ single | `Hidden of Ticket.t ] [@@deriving show]
+    type t = [ single | `Double of single * single ]
+
+    type t_with_hidden =
+      [ single_with_hidden | `Double of single_with_hidden * single_with_hidden ]
+
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+    val single_of_yojson : Yojson.Safe.t -> (single, string) result
+    val single_to_yojson : single -> Yojson.Safe.t
+  end = struct
+    type single =
+      [ `Taxi of Loc.t | `Bus of Loc.t | `Ug of Loc.t | `Secret of Loc.t ]
+    [@@deriving show, yojson]
+
+    type single_with_hidden = [ single | `Hidden of Ticket.t ]
+    [@@deriving show, yojson]
+
+    type t = [ single | `Double of single * single ] [@@deriving show, yojson]
+
+    type t_with_hidden =
+      [ single_with_hidden | `Double of single_with_hidden * single_with_hidden ]
     [@@deriving show]
   end
 
-  module Agent = struct
-    type role = [ `MrX | `Police ] [@@deriving show]
+  and Ticket : sig
+    type t = [ `Taxi | `Bus | `Ug | `Secret ]
 
-    type t = { loc : Loc.t; ticket_set : Ticket.set; role : role; map : Map.t }
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_move_single : Move.single -> t
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
+    type t = [ `Taxi | `Bus | `Ug | `Secret ] [@@deriving show, yojson]
+
+    let of_move_single = function
+      | `Taxi _ -> `Taxi
+      | `Bus _ -> `Bus
+      | `Ug _ -> `Ug
+      | `Secret _ -> `Secret
+  end
+
+  module Agent : sig
+    type role = [ `MrX | `Police ] [@@deriving show]
+    type t
+
+    val make :
+      loc:Loc.t ->
+      ticket_set:Ticket_set.t ->
+      role:role ->
+      map:Map.t ->
+      unit ->
+      t
+
+    val role : t -> role
+    val loc : t -> Loc.t
+    val ticket_set : t -> Ticket_set.t
+    val move : Move.t -> t -> (t, [ `NoSuchLink | `NoTicket ]) result
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : map:Map.t -> Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
+    type role = [ `MrX | `Police ] [@@deriving show, yojson]
+
+    type t = {
+      loc : Loc.t;
+      ticket_set : Ticket_set.t;
+      role : role;
+      map : Map.t;
+    }
     [@@deriving show]
+
+    let of_yojson ~map j =
+      let ( let* ) = Result.bind in
+      let m = Yojson.Safe.Util.to_assoc j in
+      let* loc =
+        List.assoc_opt "loc" m |> Option.to_result ~none:"invalid loc"
+      in
+      let* loc = Loc.of_yojson loc in
+      let* ticket_set =
+        List.assoc_opt "ticket_set" m
+        |> Option.to_result ~none:"invalid ticket_set"
+      in
+      let* ticket_set = Ticket_set.of_yojson ticket_set in
+      let* role =
+        List.assoc_opt "role" m |> Option.to_result ~none:"invalid role"
+      in
+      let* role = role_of_yojson role in
+      Ok { loc; ticket_set; role; map }
+
+    let to_yojson t =
+      `Assoc
+        [
+          ("loc", Loc.to_yojson t.loc);
+          ("ticket_set", Ticket_set.to_yojson t.ticket_set);
+          ("role", role_to_yojson t.role);
+        ]
 
     let make ~loc ~ticket_set ~role ~map () = { loc; ticket_set; role; map }
     let role t = t.role
     let loc t = t.loc
     let ticket_set t = t.ticket_set
 
-    let use_double_move_ticket t =
-      if t.ticket_set.double = 0 then Error `NoTicket
-      else
-        Ok
-          {
-            t with
-            ticket_set = { t.ticket_set with double = t.ticket_set.double - 1 };
-          }
-
-    let move ~dst ~by t =
+    let single_move (move : Move.single) t =
+      let dst, by =
+        match move with
+        | `Taxi loc -> (loc, `Taxi)
+        | `Bus loc -> (loc, `Bus)
+        | `Ug loc -> (loc, `Ug)
+        | `Secret loc -> (loc, `Secret)
+      in
       match
         (* Check if a link exists correctly from `t.loc to `dst` by `by` *)
         t.map |> Map.get_links ~src:t.loc
@@ -220,7 +353,7 @@ module M = struct
                match by with
                | #Link.transport as by when Link.by l = by -> true
                | _ ->
-                   (* a secret ticket can be used for any transport *)
+                   (* a secret ticket can be used for any transport including boats *)
                    by = `Secret)
       with
       | None -> Error `NoSuchLink
@@ -237,38 +370,112 @@ module M = struct
               Ok { t.ticket_set with secret = t.ticket_set.secret - 1 }
           | _ -> Error `NoTicket)
           |> Result.map (fun ticket_set -> { t with ticket_set })
+
+    let move (move : Move.t) t =
+      match move with
+      | #Move.single as m -> single_move m t
+      | `Double (first, second) ->
+          let ( >>= ) = Result.bind in
+          single_move first t >>= single_move second
   end
 
-  module History = struct
-    type t = { init_locs : Loc.t list; moves : (Ticket.t * Loc.t) list }
-    [@@deriving show]
+  module History : sig
+    type t
 
-    let make ~init_mr_x_loc ~init_police_locs () =
-      { init_locs = init_mr_x_loc :: init_police_locs; moves = [] }
+    val make : init_locs:Loc.t list -> unit -> t
+    val add : Move.t -> t -> t
 
-    let add ~ticket ~dst t = { t with moves = (ticket, dst) :: t.moves }
+    val get_view :
+      from:Agent.role -> t -> Loc.t option list * Move.t_with_hidden list
 
-    let get ~agent_id ~clock t =
-      List.nth_opt t.moves ((clock * List.length t.init_locs) + agent_id)
+    val show : t -> string
+    val pp : Format.formatter -> t -> unit
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
+    type t = { init_locs : Loc.t list; moves : Move.t list }
+    [@@deriving show, yojson]
+
+    let make ~init_locs () = { init_locs; moves = [] }
+    let add move t = { t with moves = move :: t.moves }
+    let mask_init_locs t = None :: (List.tl t.init_locs |> List.map Option.some)
+
+    let mask_move ~turn ~clock (move : Move.single) : Move.single_with_hidden =
+      if
+        turn = 0
+        (* Mr.X *)
+        && (clock = 3 || clock = 8 || clock = 13 || clock = 18 || clock = 24)
+        || turn <> 0 (* Police *)
+      then (move :> Move.single_with_hidden)
+      else `Hidden (Ticket.of_move_single move)
+
+    let mask_moves t =
+      (* Mask each move in t.moves *)
+      let num_agents = List.length t.init_locs in
+      let aux ((acc : Move.t_with_hidden list), (turn, clock)) move =
+        let acc, clock =
+          match move with
+          | #Move.single as move ->
+              let masked_move = mask_move ~turn ~clock move in
+              ((masked_move :> Move.t_with_hidden) :: acc, clock)
+          | `Double (first, second) ->
+              assert (turn = 0 (* Mr.X *));
+              let masked_first = mask_move ~turn ~clock first in
+              let clock = clock + 1 in
+              let masked_second = mask_move ~turn ~clock second in
+              (`Double (masked_first, masked_second) :: acc, clock)
+        in
+        ( acc,
+          ( (turn + 1) mod num_agents,
+            if turn + 1 = num_agents then clock + 1 else clock ) )
+      in
+      t.moves |> List.fold_left aux ([], (0, 1))
+
+    let get_view ~from t =
+      match from with
+      | `MrX ->
+          ( t.init_locs |> List.map Option.some,
+            (t.moves :> Move.t_with_hidden list) )
+      | `Police -> (mask_init_locs t, fst (mask_moves t))
   end
 
-  module Game = struct
+  module Game : sig
+    type t
+
+    val make : init_locs:Loc.t list -> map:Map.t -> unit -> t
+    val is_finished : t -> bool
+    val agents : t -> Agent.t list
+    val history : t -> History.t
+    val turn : t -> int (* Turn 0 is Mr.X's. Turn 1 through 4 are police's. *)
+    val clock : t -> int (* 1 through 24 *)
+    val move_agent : Move.t -> t -> (t, [ `NoSuchLink | `NoTicket ]) result
+    val skip_turn : t -> (t, [ `CantSkip ]) result
+    val derive_possible_moves : t -> Move.t list
+    val show : t -> string
+    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val to_yojson : t -> Yojson.Safe.t
+  end = struct
     type t = {
       history : History.t;
       agents : Agent.t Farray.t; [@opaque]
       map : Map.t;
       turn : int;
       clock : int;
+      is_finished : bool;
     }
     [@@deriving show]
 
-    let make ~init_mr_x_loc ~init_police_locs ~map () =
-      let history = History.make ~init_mr_x_loc ~init_police_locs () in
+    let of_yojson = assert false
+    let to_yojson = assert false
+    let is_finished t = t.is_finished
+
+    let make ~init_locs ~map () =
+      let history = History.make ~init_locs () in
       let agents =
-        init_mr_x_loc :: init_police_locs
+        init_locs
         |> List.mapi (fun i loc ->
                let ticket_set =
-                 let open Ticket in
+                 let open Ticket_set in
                  if i = 0 then
                    { taxi = 12; bus = 0; ug = 4; secret = 5; double = 2 }
                  else { taxi = 10; bus = 8; ug = 4; secret = 0; double = 0 }
@@ -277,24 +484,18 @@ module M = struct
                Agent.make ~loc ~ticket_set ~role ~map ())
         |> Farray.of_list
       in
-      { history; agents; map; turn = 0; clock = 1 }
+      { history; agents; map; turn = 0; clock = 1; is_finished = false }
 
-    let agents t = t.agents
+    let agents t = Farray.to_list t.agents
     let history t = t.history
     let turn t = t.turn
     let clock t = t.clock
 
-    let move_agent ~by ~dst t =
+    let move_agent move t =
       let ( let* ) = Result.bind in
       let* agent =
         let a = t.agents.Farray.@(t.turn) in
-        match by with
-        | `Double (first, second) ->
-            let* a = Agent.use_double_move_ticket a in
-            let* a = Agent.move ~dst:dst1 ~by:first a in
-            let* a = Agent.move ~dst:dst2 ~by:second a in
-            Ok a
-        | #Ticket.basic as by -> Agent.move ~dst ~by a
+        Agent.move move a
       in
       let t =
         let num_agents = Farray.length t.agents in
@@ -306,9 +507,38 @@ module M = struct
         }
       in
       Ok t
+
+    let derive_possible_moves t =
+      let a = t.agents.Farray.@(t.turn) in
+      t.map
+      |> Map.get_links ~src:(Agent.loc a)
+      |> List.filter_map (fun l ->
+             let dst = Link.dst l in
+             let move =
+               match Link.by l with
+               | `Taxi -> `Taxi dst
+               | `Bus -> `Bus dst
+               | `Ug -> `Ug dst
+               | `Boat -> `Secret dst
+             in
+             match a |> Agent.move move with
+             | Ok _ -> Some move
+             | Error _ -> None)
+
+    let skip_turn t =
+      if derive_possible_moves t = [] then Error `CantSkip
+      else
+        let t =
+          let num_agents = Farray.length t.agents in
+          {
+            t with
+            turn = (t.turn + 1) mod num_agents;
+            clock = (if t.turn + 1 = num_agents then t.clock + 1 else t.clock);
+          }
+        in
+        Ok t
   end
 end
-*)
 
 module Test (Yrksp : S) = struct
   open Yrksp
@@ -568,4 +798,6 @@ module Test (Yrksp : S) = struct
         ]
     in
     ()
+
+  (* FIXME test skip *)
 end
