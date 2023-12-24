@@ -73,17 +73,18 @@ let get_api_v1_game ~game_id:_ =
     in
     aux move
   in
+  let is_finished = Game.has_finished g in
   let _ : Yojson.Safe.t =
     `Assoc
       [
         ("turn", `Int (Game.turn g));
         ("clock", `Int (Game.clock g));
-        ("is_finished", `Bool (Game.is_finished g));
+        ("is_finished", `Bool is_finished);
         ("agents", `List (g |> Game.agents |> List.map agent_to_yojson));
         ( "history",
           g |> Game.history
           |> history_to_yojson
-               ~from:(if Game.is_finished g || is_mr_x then `MrX else `Police)
+               ~from:(if is_finished || is_mr_x then `MrX else `Police)
                ~num_agents:(g |> Game.agents |> List.length) );
         ( "possible_moves",
           `List (g |> Game.derive_possible_moves |> List.map move_to_yojson) );

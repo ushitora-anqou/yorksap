@@ -347,7 +347,7 @@ module Game : sig
   type t
 
   val make : init_locs:Loc.t list -> map:Map.t -> unit -> t
-  val is_finished : t -> bool
+  val has_finished : t -> bool
   val agents : t -> Agent.t list
   val history : t -> History.t
   val turn : t -> int (* Turn 0 is Mr.X's. Turn 1 through 4 are police's. *)
@@ -365,7 +365,6 @@ end = struct
     map : Map.t;
     turn : int;
     clock : int;
-    is_finished : bool;
   }
   [@@deriving show]
 
@@ -399,13 +398,7 @@ end = struct
       Option.bind (m |> List.assoc_opt "clock") Yojson.Safe.Util.to_int_option
       |> Option.to_result ~none:"invalid turn"
     in
-    let* is_finished =
-      Option.bind
-        (m |> List.assoc_opt "is_finished")
-        Yojson.Safe.Util.to_bool_option
-      |> Option.to_result ~none:"invalid turn"
-    in
-    Ok { history; agents; map; turn; clock; is_finished }
+    Ok { history; agents; map; turn; clock }
 
   let to_yojson t =
     `Assoc
@@ -415,10 +408,7 @@ end = struct
           `List (t.agents |> Farray.to_list |> List.map Agent.to_yojson) );
         ("turn", `Int t.turn);
         ("clock", `Int t.clock);
-        ("is_finished", `Bool t.is_finished);
       ]
-
-  let is_finished t = t.is_finished
 
   let make ~init_locs ~map () =
     let history = History.make ~init_locs () in
@@ -433,23 +423,12 @@ end = struct
              Agent.make ~loc ~ticket_set ~role ~map ())
       |> Farray.of_list
     in
-    { history; agents; map; turn = 0; clock = 1; is_finished = false }
+    { history; agents; map; turn = 0; clock = 1 }
 
   let agents t = Farray.to_list t.agents
   let history t = t.history
   let turn t = t.turn
   let clock t = t.clock
-
-  let has_finished t =
-    t.is_finished || t.clock > 24
-    ||
-    (* Check if the current loc of Mr.X is the same as one of the policemen *)
-    let mr_x_loc = t.agents.Farray.@(0) |> Agent.loc in
-    t.agents
-    |> Farray.fold_lefti
-         (fun i b agent ->
-           b || if i = 0 then false else b || Agent.loc agent = mr_x_loc)
-         false
 
   let move_agent move t =
     let ( let* ) = Result.bind in
@@ -457,11 +436,19 @@ end = struct
     (* Make sure no agent exists at the destination *)
     let* () =
       if
+        (*
+          allowed:
+            - a policeman moves to where Mr.X exists (i.turn <> 0 && i = 0)
+          denied:
+            - a policeman moves to where another policeman exists (i.turn <> 0 && i <> 0)
+            - Mr.X moves to where a policeman exists (i.turn = 0 && i <> 0)
+          don't care:
+            - Mr.X moves to where Mr.X exists (i.turn = 0 && i = 0)
+        *)
         let dst = Move.get_dst move in
         t.agents
         |> Farray.fold_lefti
-             (fun i b agent ->
-               b || (Agent.loc agent = dst && i <> 0 && t.turn <> 0))
+             (fun i b agent -> b || (Agent.loc agent = dst && i <> 0))
              false
       then Error.someone_is_already_there
       else Ok ()
@@ -503,7 +490,6 @@ end = struct
         turn = (t.turn + 1) mod num_agents;
       }
     in
-    let t = { t with is_finished = has_finished t } in
     Ok t
 
   let derive_possible_moves t =
@@ -532,6 +518,22 @@ end = struct
           clock = (if t.turn + 1 = num_agents then t.clock + 1 else t.clock);
         }
       in
-      let t = { t with is_finished = has_finished t } in
       Ok t
+
+  let has_finished t =
+    let time_over = t.clock > 24 in
+    let mr_x_arrested =
+      (* Check if the current loc of Mr.X is the same as one of the policemen *)
+      let mr_x_loc = t.agents.Farray.@(0) |> Agent.loc in
+      t.agents
+      |> Farray.fold_lefti
+           (fun i b agent ->
+             b || if i = 0 then false else b || Agent.loc agent = mr_x_loc)
+           false
+    in
+    let mr_x_can't_move =
+      (* If the current turn is Mr.X's, check if Mr.X can move *)
+      t.turn = 0 && derive_possible_moves t = []
+    in
+    time_over || mr_x_arrested || mr_x_can't_move
 end

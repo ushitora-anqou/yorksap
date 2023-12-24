@@ -17,5 +17,7 @@ module London = struct
     >>= link 108 `Bus 105 >>= link 115 `Taxi 127 >>= link 155 `Taxi 156
     >>= link 115 `Taxi 114 >>= link 114 `Taxi 113 >>= link 113 `Taxi 125
     >>= link 89 `Taxi 105 >>= link 89 `Bus 105 >>= link 89 `Ug 67
-    >>= link 13 `Taxi 23 >>= link 13 `Bus 23 |> Result.get_ok
+    >>= link 13 `Taxi 23 >>= link 13 `Bus 23 >>= link 70 `Taxi 71
+    >>= link 55 `Taxi 71 >>= link 41 `Taxi 54 >>= link 86 `Bus 87
+    |> Result.get_ok
 end

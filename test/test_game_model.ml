@@ -80,11 +80,11 @@ let test_game_finished () =
   let g =
     Game.make ~init_locs:[ Loc.make ~id:9 (); Loc.make ~id:8 () ] ~map ()
   in
-  assert (not (Game.is_finished g));
+  assert (not (Game.has_finished g));
   let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> expect_ok in
-  assert (not (Game.is_finished g));
+  assert (not (Game.has_finished g));
   let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> expect_ok in
-  assert (Game.is_finished g);
+  assert (Game.has_finished g);
   ()
 
 let test_use_boat () =
@@ -164,7 +164,7 @@ let test_yojson_serialization () =
     | Error msg -> failwith msg
   in
   assert (Game.history g = Game.history g');
-  assert (Game.is_finished g = Game.is_finished g');
+  assert (Game.has_finished g = Game.has_finished g');
   assert (Game.turn g = Game.turn g');
   assert (Game.clock g = Game.clock g');
   assert (List.length (Game.agents g) = List.length (Game.agents g'));
@@ -217,10 +217,10 @@ let test_game_over_by_timeout_case1 () =
   let g = g |> Game.move_agent (`Bus (Loc.make ~id:23 ())) |> expect_ok in
   let g = g |> Game.skip_turn |> expect_ok in
   assert (Game.clock g = 24);
-  assert (not (Game.is_finished g));
+  assert (not (Game.has_finished g));
   let g = g |> Game.move_agent (`Bus (Loc.make ~id:13 ())) |> expect_ok in
   let g = g |> Game.skip_turn |> expect_ok in
-  assert (Game.is_finished g);
+  assert (Game.has_finished g);
   ()
 
 let test_game_over_by_timeout_case2 () =
@@ -259,7 +259,7 @@ let test_game_over_by_timeout_case2 () =
     moves
     |> List.fold_left (fun g move -> Game.move_agent move g |> expect_ok) g
   in
-  assert (Game.is_finished g);
+  assert (Game.has_finished g);
   ()
 
 let test_derive_possible_moves_case1 () =
@@ -296,6 +296,40 @@ let test_derive_possible_moves_case2 () =
   assert (List.sort compare got_moves = List.sort compare expected_moves);
   ()
 
+let test_derive_possible_moves_case3 () =
+  (*
+    X: 71 -> 70
+    P1: 55 -> 71
+    P2: 41 -> 54
+    P3: 86 -> 87
+
+           41
+           |t t  |
+        -- 54 -- 55
+           |t    |t
+           70 -- 71
+           |t t
+     86 -- 87
+        b
+  *)
+  let init_locs =
+    [
+      Loc.make ~id:71 ();
+      Loc.make ~id:55 ();
+      Loc.make ~id:41 ();
+      Loc.make ~id:86 ();
+    ]
+  in
+  let g = Game.make ~init_locs ~map () in
+  let g = g |> Game.move_agent (`Taxi (Loc.make ~id:70 ())) |> expect_ok in
+  let g = g |> Game.move_agent (`Taxi (Loc.make ~id:71 ())) |> expect_ok in
+  let g = g |> Game.move_agent (`Taxi (Loc.make ~id:54 ())) |> expect_ok in
+  assert (not (Game.has_finished g));
+  let g = g |> Game.move_agent (`Bus (Loc.make ~id:87 ())) |> expect_ok in
+  assert (Game.derive_possible_moves g = []);
+  assert (Game.has_finished g);
+  ()
+
 (* FIXME derived possible moves *)
 (* FIXME: check if Mr.X cannot move anywhere *)
 let () =
@@ -321,5 +355,7 @@ let () =
             test_derive_possible_moves_case1;
           test_case "derive possible moves (case 2)" `Quick
             test_derive_possible_moves_case2;
+          test_case "derive possible moves (case 3)" `Quick
+            test_derive_possible_moves_case3;
         ] );
     ]
