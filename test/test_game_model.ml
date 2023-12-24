@@ -182,7 +182,7 @@ let test_giving_tickets_to_mr_x () =
   assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 9);
   ()
 
-let test_game_over_by_timeout () =
+let test_game_over_by_timeout_case1 () =
   let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
   let g = Game.make ~init_locs ~map () in
   let moves =
@@ -223,7 +223,45 @@ let test_game_over_by_timeout () =
   assert (Game.is_finished g);
   ()
 
-(* FIXME test skip *)
+let test_game_over_by_timeout_case2 () =
+  let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
+  let g = Game.make ~init_locs ~map () in
+  let moves =
+    `Double (`Bus (Loc.make ~id:23 ()), `Bus (Loc.make ~id:13 ()))
+    :: `Taxi (Loc.make ~id:105 ())
+    :: `Double (`Bus (Loc.make ~id:23 ()), `Bus (Loc.make ~id:13 ()))
+    :: `Taxi (Loc.make ~id:89 ())
+    :: (List.init 20 Fun.id
+       |> List.fold_left
+            (fun acc i ->
+              let mr_x =
+                if i < 22 then
+                  if i mod 2 = 0 then `Taxi (Loc.make ~id:23 ())
+                  else `Taxi (Loc.make ~id:13 ())
+                else if i mod 2 = 0 then `Bus (Loc.make ~id:23 ())
+                else `Bus (Loc.make ~id:13 ())
+              in
+              let police =
+                if i < 8 then
+                  if i mod 2 = 0 then `Taxi (Loc.make ~id:105 ())
+                  else `Taxi (Loc.make ~id:89 ())
+                else if i < 16 then
+                  if i mod 2 = 0 then `Bus (Loc.make ~id:105 ())
+                  else `Bus (Loc.make ~id:89 ())
+                else if i mod 2 = 0 then `Ug (Loc.make ~id:67 ())
+                else `Ug (Loc.make ~id:89 ())
+              in
+              police :: mr_x :: acc)
+            []
+       |> List.rev)
+  in
+  let g =
+    moves
+    |> List.fold_left (fun g move -> Game.move_agent move g |> expect_ok) g
+  in
+  assert (Game.is_finished g);
+  ()
+
 (* FIXME derived possible moves *)
 (* FIXME game finishes at 24:00 *)
 let () =
@@ -241,6 +279,9 @@ let () =
             test_use_double_move;
           test_case "serialization" `Quick test_yojson_serialization;
           test_case "give tickets to Mr.X" `Quick test_giving_tickets_to_mr_x;
-          test_case "game over by timeout" `Quick test_game_over_by_timeout;
+          test_case "game over by timeout (case 1)" `Quick
+            test_game_over_by_timeout_case1;
+          test_case "game over by timeout (case 2)" `Quick
+            test_game_over_by_timeout_case2;
         ] );
     ]
