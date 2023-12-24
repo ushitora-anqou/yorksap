@@ -2,4 +2,11 @@
  (name yorksap)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.make ppx_deriving_yojson))
- (libraries fmt logs mirage-clock-unix ptime yojson))
+ (libraries
+  containers
+  containers-data
+  fmt
+  logs
+  mirage-clock-unix
+  ptime
+  yojson))
