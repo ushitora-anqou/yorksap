@@ -188,6 +188,7 @@ module Agent : sig
   val loc : t -> Loc.t
   val ticket_set : t -> Ticket_set.t
   val move : Move.t -> t -> (t, Error.t) result
+  val add_ticket : value:int -> [ Ticket.t | `Double ] -> t -> t
   val show : t -> string
   val pp : Format.formatter -> t -> unit
   val of_yojson : map:Map.t -> Yojson.Safe.t -> (t, string) result
@@ -227,12 +228,16 @@ end = struct
   let loc t = t.loc
   let ticket_set t = t.ticket_set
 
-  let add_ticket ~value t = function
-    | `Taxi -> { t.ticket_set with taxi = t.ticket_set.taxi + value }
-    | `Bus -> { t.ticket_set with bus = t.ticket_set.bus + value }
-    | `Ug -> { t.ticket_set with ug = t.ticket_set.ug + value }
-    | `Secret -> { t.ticket_set with secret = t.ticket_set.secret + value }
-    | `Double -> { t.ticket_set with double = t.ticket_set.double + value }
+  let add_ticket ~value ticket t =
+    let ticket_set =
+      match ticket with
+      | `Taxi -> { t.ticket_set with taxi = t.ticket_set.taxi + value }
+      | `Bus -> { t.ticket_set with bus = t.ticket_set.bus + value }
+      | `Ug -> { t.ticket_set with ug = t.ticket_set.ug + value }
+      | `Secret -> { t.ticket_set with secret = t.ticket_set.secret + value }
+      | `Double -> { t.ticket_set with double = t.ticket_set.double + value }
+    in
+    { t with ticket_set }
 
   let single_move (move : Move.single) t =
     let dst, by =
@@ -258,12 +263,15 @@ end = struct
     | Some _ ->
         (* Check if a ticket for `by` exists *)
         if
-          (by = `Taxi && t.ticket_set.taxi > 0)
-          || (by = `Bus && t.ticket_set.bus > 0)
-          || (by = `Ug && t.ticket_set.ug > 0)
-          || (by = `Secret && t.ticket_set.secret > 0)
-        then Ok { t with ticket_set = add_ticket ~value:(-1) t by; loc = dst }
-        else Error.no_ticket
+          not
+            ((by = `Taxi && t.ticket_set.taxi > 0)
+            || (by = `Bus && t.ticket_set.bus > 0)
+            || (by = `Ug && t.ticket_set.ug > 0)
+            || (by = `Secret && t.ticket_set.secret > 0))
+        then Error.no_ticket
+        else
+          let t = t |> add_ticket ~value:(-1) by in
+          Ok { t with loc = dst }
 
   let move (move : Move.t) t =
     match move with
@@ -272,7 +280,7 @@ end = struct
         let ( let* ) = Result.bind in
         let* t = single_move first t in
         let* t = single_move second t in
-        Ok { t with ticket_set = add_ticket ~value:(-1) t `Double }
+        Ok (t |> add_ticket ~value:(-1) `Double)
 end
 
 module History : sig
@@ -446,8 +454,9 @@ end = struct
 
   let move_agent move t =
     let ( let* ) = Result.bind in
+
+    (* Make sure no agent exists at the destination *)
     let* () =
-      (* Check if anyone is not at the destination *)
       if
         let dst = Move.get_dst move in
         t.agents
@@ -458,10 +467,26 @@ end = struct
       then Error.someone_is_already_there
       else Ok ()
     in
+
+    (* Move the agent *)
     let* agent =
       let a = t.agents.Farray.@(t.turn) in
       Agent.move move a
     in
+    let agents = t.agents.Farray.@(t.turn) <- agent in
+
+    (* Give Mr.X a ticket if a policeman used one *)
+    let agents =
+      match move with
+      | #Move.single as by when t.turn <> 0 ->
+          agents.Farray.@(0) <-
+            agents.Farray.@(0)
+            |> Agent.add_ticket ~value:1
+                 (Ticket.of_move_single by :> [ Ticket.t | `Double ])
+      | _ -> agents
+    in
+
+    (* Move the clock forward *)
     let num_agents = Farray.length t.agents in
     let clock =
       match move with
@@ -469,13 +494,14 @@ end = struct
       | _ when t.turn + 1 = num_agents -> t.clock + 1
       | _ -> t.clock
     in
+
     let t =
       {
         t with
+        agents;
         clock;
-        turn = (t.turn + 1) mod num_agents;
-        agents = t.agents.Farray.@(t.turn) <- agent;
         history = History.add move t.history;
+        turn = (t.turn + 1) mod num_agents;
       }
     in
     let t = { t with is_finished = has_finished t } in

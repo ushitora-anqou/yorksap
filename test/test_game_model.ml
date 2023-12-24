@@ -171,8 +171,18 @@ let test_yojson_serialization () =
   assert (Game.agents g = Game.agents g');
   assert (g = g')
 
+let test_giving_tickets_to_mr_x () =
+  let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
+  let g = Game.make ~init_locs ~map () in
+  let g = Game.move_agent (`Taxi (Loc.make ~id:114 ())) g |> expect_ok in
+  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 11);
+  let g = Game.move_agent (`Taxi (Loc.make ~id:8 ())) g |> expect_ok in
+  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 12);
+  ()
+
 (* FIXME test skip *)
 (* FIXME derived possible moves *)
+(* FIXME game finishes at 24:00 *)
 let () =
   let open Alcotest in
   run "game_model"
@@ -187,5 +197,6 @@ let () =
           test_case "able to use double-move tickets" `Quick
             test_use_double_move;
           test_case "serialization" `Quick test_yojson_serialization;
+          test_case "give tickets to Mr.X" `Quick test_giving_tickets_to_mr_x;
         ] );
     ]
