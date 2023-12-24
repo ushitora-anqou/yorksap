@@ -151,8 +151,28 @@ let test_use_double_move () =
 
   ()
 
+let test_yojson_serialization () =
+  let init_mr_x_loc = Loc.make ~id:155 () in
+  let init_police_locs =
+    [ 138; 50; 53; 198; 155 ] |> List.map (fun id -> Loc.make ~id ())
+  in
+  let init_locs = init_mr_x_loc :: init_police_locs in
+  let g = Game.make ~init_locs ~map () in
+  let g' =
+    match g |> Game.to_yojson |> Game.of_yojson ~map with
+    | Ok g -> g
+    | Error msg -> failwith msg
+  in
+  assert (Game.history g = Game.history g');
+  assert (Game.is_finished g = Game.is_finished g');
+  assert (Game.turn g = Game.turn g');
+  assert (Game.clock g = Game.clock g');
+  assert (List.length (Game.agents g) = List.length (Game.agents g'));
+  assert (Game.agents g = Game.agents g');
+  assert (g = g')
+
 (* FIXME test skip *)
-(* FIXME to_yojson of_yojson *)
+(* FIXME derived possible moves *)
 let () =
   let open Alcotest in
   run "game_model"
@@ -166,5 +186,6 @@ let () =
           test_case "enclosure of locs" `Quick test_open_locs;
           test_case "able to use double-move tickets" `Quick
             test_use_double_move;
+          test_case "serialization" `Quick test_yojson_serialization;
         ] );
     ]

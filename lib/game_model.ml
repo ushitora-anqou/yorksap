@@ -376,7 +376,7 @@ end = struct
              let* agent = Agent.of_yojson ~map j in
              Ok (agent :: acc))
            (Ok [])
-      |> Result.map Farray.of_list
+      |> Result.map (fun xs -> xs |> List.rev |> Farray.of_list)
     in
     let* turn =
       Option.bind (m |> List.assoc_opt "turn") Yojson.Safe.Util.to_int_option
