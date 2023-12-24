@@ -263,7 +263,6 @@ let test_game_over_by_timeout_case2 () =
   ()
 
 (* FIXME derived possible moves *)
-(* FIXME game finishes at 24:00 *)
 let () =
   let open Alcotest in
   run "game_model"
