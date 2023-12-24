@@ -450,7 +450,6 @@ end = struct
          (fun i b agent ->
            b || if i = 0 then false else b || Agent.loc agent = mr_x_loc)
          false
-  (* FIXME: check if Mr.X cannot move anywhere *)
 
   let move_agent move t =
     let ( let* ) = Result.bind in
@@ -520,7 +519,7 @@ end = struct
              | `Ug -> `Ug dst
              | `Boat -> `Secret dst
            in
-           match a |> Agent.move move with Ok _ -> Some move | Error _ -> None)
+           match t |> move_agent move with Ok _ -> Some move | Error _ -> None)
 
   let skip_turn t =
     if derive_possible_moves t <> [] then Error.can't_skip

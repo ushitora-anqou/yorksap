@@ -262,7 +262,42 @@ let test_game_over_by_timeout_case2 () =
   assert (Game.is_finished g);
   ()
 
+let test_derive_possible_moves_case1 () =
+  let init_locs = [ Loc.make ~id:1 () ] in
+  let g = Game.make ~init_locs ~map () in
+  let got_moves = Game.derive_possible_moves g in
+  let expected_moves =
+    [
+      `Taxi (Loc.make ~id:8 ());
+      `Taxi (Loc.make ~id:9 ());
+      `Bus (Loc.make ~id:46 ());
+      `Bus (Loc.make ~id:58 ());
+      `Ug (Loc.make ~id:46 ());
+    ]
+  in
+  assert (List.sort compare got_moves = List.sort compare expected_moves);
+  ()
+
+let test_derive_possible_moves_case2 () =
+  let init_locs =
+    [ Loc.make ~id:89 (); Loc.make ~id:1 (); Loc.make ~id:8 () ]
+  in
+  let g = Game.make ~init_locs ~map () in
+  let g = g |> Game.move_agent (`Taxi (Loc.make ~id:105 ())) |> expect_ok in
+  let got_moves = Game.derive_possible_moves g in
+  let expected_moves =
+    [
+      `Taxi (Loc.make ~id:9 ());
+      `Bus (Loc.make ~id:46 ());
+      `Bus (Loc.make ~id:58 ());
+      `Ug (Loc.make ~id:46 ());
+    ]
+  in
+  assert (List.sort compare got_moves = List.sort compare expected_moves);
+  ()
+
 (* FIXME derived possible moves *)
+(* FIXME: check if Mr.X cannot move anywhere *)
 let () =
   let open Alcotest in
   run "game_model"
@@ -282,5 +317,9 @@ let () =
             test_game_over_by_timeout_case1;
           test_case "game over by timeout (case 2)" `Quick
             test_game_over_by_timeout_case2;
+          test_case "derive possible moves (case 1)" `Quick
+            test_derive_possible_moves_case1;
+          test_case "derive possible moves (case 2)" `Quick
+            test_derive_possible_moves_case2;
         ] );
     ]
