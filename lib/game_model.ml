@@ -227,6 +227,13 @@ end = struct
   let loc t = t.loc
   let ticket_set t = t.ticket_set
 
+  let add_ticket ~value t = function
+    | `Taxi -> { t.ticket_set with taxi = t.ticket_set.taxi + value }
+    | `Bus -> { t.ticket_set with bus = t.ticket_set.bus + value }
+    | `Ug -> { t.ticket_set with ug = t.ticket_set.ug + value }
+    | `Secret -> { t.ticket_set with secret = t.ticket_set.secret + value }
+    | `Double -> { t.ticket_set with double = t.ticket_set.double + value }
+
   let single_move (move : Move.single) t =
     let dst, by =
       match move with
@@ -250,24 +257,22 @@ end = struct
     | None -> Error.no_link ~src:(Loc.id t.loc) ~dst:(Loc.id dst)
     | Some _ ->
         (* Check if a ticket for `by` exists *)
-        (match by with
-        | `Taxi when t.ticket_set.taxi > 0 ->
-            Ok { t.ticket_set with taxi = t.ticket_set.taxi - 1 }
-        | `Bus when t.ticket_set.bus > 0 ->
-            Ok { t.ticket_set with bus = t.ticket_set.bus - 1 }
-        | `Ug when t.ticket_set.ug > 0 ->
-            Ok { t.ticket_set with ug = t.ticket_set.ug - 1 }
-        | `Secret when t.ticket_set.secret > 0 ->
-            Ok { t.ticket_set with secret = t.ticket_set.secret - 1 }
-        | _ -> Error.no_ticket)
-        |> Result.map (fun ticket_set -> { t with loc = dst; ticket_set })
+        if
+          (by = `Taxi && t.ticket_set.taxi > 0)
+          || (by = `Bus && t.ticket_set.bus > 0)
+          || (by = `Ug && t.ticket_set.ug > 0)
+          || (by = `Secret && t.ticket_set.secret > 0)
+        then Ok { t with ticket_set = add_ticket ~value:(-1) t by; loc = dst }
+        else Error.no_ticket
 
   let move (move : Move.t) t =
     match move with
     | #Move.single as m -> single_move m t
     | `Double (first, second) ->
-        let ( >>= ) = Result.bind in
-        single_move first t >>= single_move second
+        let ( let* ) = Result.bind in
+        let* t = single_move first t in
+        let* t = single_move second t in
+        Ok { t with ticket_set = add_ticket ~value:(-1) t `Double }
 end
 
 module History : sig

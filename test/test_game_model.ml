@@ -135,6 +135,7 @@ let test_use_double_move () =
   assert (Game.agents g |> List.hd |> Agent.loc = new_loc2);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).secret = 4);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 8);
+  assert ((Game.agents g |> List.hd |> Agent.ticket_set).double = 1);
   assert (
     Game.history g
     |> History.get_view ~from:`MrX
@@ -148,7 +149,6 @@ let test_use_double_move () =
     |> History.get_view ~from:`MrX
     = ( init_locs |> List.map Option.some,
         [ `Double (`Secret new_loc1, `Bus new_loc2); `Taxi new_loc ] ));
-
   ()
 
 let test_yojson_serialization () =
