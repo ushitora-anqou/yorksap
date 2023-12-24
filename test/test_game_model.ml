@@ -176,8 +176,10 @@ let test_giving_tickets_to_mr_x () =
   let g = Game.make ~init_locs ~map () in
   let g = Game.move_agent (`Taxi (Loc.make ~id:114 ())) g |> expect_ok in
   assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 11);
+  assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 10);
   let g = Game.move_agent (`Taxi (Loc.make ~id:8 ())) g |> expect_ok in
   assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 12);
+  assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 9);
   ()
 
 (* FIXME test skip *)
