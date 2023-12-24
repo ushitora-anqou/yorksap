@@ -237,6 +237,8 @@ module M = struct
 
     val show : t -> string
     val pp : Format.formatter -> t -> unit
+    val show_t_with_hidden : t_with_hidden -> string
+    val pp_t_with_hidden : Format.formatter -> t_with_hidden -> unit
     val of_yojson : Yojson.Safe.t -> (t, string) result
     val to_yojson : t -> Yojson.Safe.t
     val single_of_yojson : Yojson.Safe.t -> (single, string) result
@@ -452,7 +454,7 @@ module M = struct
     val skip_turn : t -> (t, [ `CantSkip ]) result
     val derive_possible_moves : t -> Move.t list
     val show : t -> string
-    val of_yojson : Yojson.Safe.t -> (t, string) result
+    val of_yojson : map:Map.t -> Yojson.Safe.t -> (t, string) result
     val to_yojson : t -> Yojson.Safe.t
   end = struct
     type t = {
@@ -465,8 +467,56 @@ module M = struct
     }
     [@@deriving show]
 
-    let of_yojson = assert false
-    let to_yojson = assert false
+    let of_yojson ~map j =
+      let ( let* ) = Result.bind in
+      let m = Yojson.Safe.Util.to_assoc j in
+      let* history =
+        m |> List.assoc_opt "history"
+        |> Option.to_result ~none:"invalid history"
+      in
+      let* history = History.of_yojson history in
+      let* agents =
+        m |> List.assoc_opt "agents"
+        |> Option.map Yojson.Safe.Util.to_list
+        |> Option.to_result ~none:"invalid agents"
+      in
+      let* agents =
+        agents
+        |> List.fold_left
+             (fun acc j ->
+               let* acc = acc in
+               let* agent = Agent.of_yojson ~map j in
+               Ok (agent :: acc))
+             (Ok [])
+        |> Result.map Farray.of_list
+      in
+      let* turn =
+        Option.bind (m |> List.assoc_opt "turn") Yojson.Safe.Util.to_int_option
+        |> Option.to_result ~none:"invalid turn"
+      in
+      let* clock =
+        Option.bind (m |> List.assoc_opt "clock") Yojson.Safe.Util.to_int_option
+        |> Option.to_result ~none:"invalid turn"
+      in
+      let* is_finished =
+        Option.bind
+          (m |> List.assoc_opt "is_finished")
+          Yojson.Safe.Util.to_bool_option
+        |> Option.to_result ~none:"invalid turn"
+      in
+      Ok { history; agents; map; turn; clock; is_finished }
+
+    let to_yojson t =
+      `Assoc
+        [
+          ("history", History.to_yojson t.history);
+          ( "agents",
+            `List (t.agents |> Farray.to_list |> List.map Agent.to_yojson) );
+          ("turn", `Int t.turn);
+          ("clock", `Int t.clock);
+          ("is_finished", `Bool t.is_finished);
+        ]
+
     let is_finished t = t.is_finished
 
     let make ~init_locs ~map () =
@@ -800,4 +850,5 @@ module Test (Yrksp : S) = struct
     ()
 
   (* FIXME test skip *)
+  (* FIXME to_yojson of_yojson *)
 end
