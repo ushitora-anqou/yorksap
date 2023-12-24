@@ -45,7 +45,7 @@ let test_game () =
 
   let ts = Game.agents g |> List.hd |> Agent.ticket_set in
   assert (
-    ts.taxi = 12 && ts.bus = 9 && ts.ug = 4 && ts.secret = 5 && ts.double = 2);
+    ts.taxi = 12 && ts.bus = 8 && ts.ug = 4 && ts.secret = 5 && ts.double = 2);
   Game.agents g |> List.tl
   |> List.iter (fun a ->
          let ts = Agent.ticket_set a in
@@ -134,7 +134,7 @@ let test_use_double_move () =
   assert (Game.clock g = 2);
   assert (Game.agents g |> List.hd |> Agent.loc = new_loc2);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).secret = 4);
-  assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 8);
+  assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 7);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).double = 1);
   assert (
     Game.history g
@@ -182,6 +182,47 @@ let test_giving_tickets_to_mr_x () =
   assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 9);
   ()
 
+let test_game_over_by_timeout () =
+  let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
+  let g = Game.make ~init_locs ~map () in
+  let moves =
+    List.init 22 Fun.id
+    |> List.fold_left
+         (fun acc i ->
+           let mr_x =
+             if i < 22 then
+               if i mod 2 = 0 then `Taxi (Loc.make ~id:23 ())
+               else `Taxi (Loc.make ~id:13 ())
+             else if i mod 2 = 0 then `Bus (Loc.make ~id:23 ())
+             else `Bus (Loc.make ~id:13 ())
+           in
+           let police =
+             if i < 10 then
+               if i mod 2 = 0 then `Taxi (Loc.make ~id:105 ())
+               else `Taxi (Loc.make ~id:89 ())
+             else if i < 18 then
+               if i mod 2 = 0 then `Bus (Loc.make ~id:105 ())
+               else `Bus (Loc.make ~id:89 ())
+             else if i mod 2 = 0 then `Ug (Loc.make ~id:67 ())
+             else `Ug (Loc.make ~id:89 ())
+           in
+           police :: mr_x :: acc)
+         []
+    |> List.rev
+  in
+  let g =
+    moves
+    |> List.fold_left (fun g move -> Game.move_agent move g |> expect_ok) g
+  in
+  let g = g |> Game.move_agent (`Bus (Loc.make ~id:23 ())) |> expect_ok in
+  let g = g |> Game.skip_turn |> expect_ok in
+  assert (Game.clock g = 24);
+  assert (not (Game.is_finished g));
+  let g = g |> Game.move_agent (`Bus (Loc.make ~id:13 ())) |> expect_ok in
+  let g = g |> Game.skip_turn |> expect_ok in
+  assert (Game.is_finished g);
+  ()
+
 (* FIXME test skip *)
 (* FIXME derived possible moves *)
 (* FIXME game finishes at 24:00 *)
@@ -200,5 +241,6 @@ let () =
             test_use_double_move;
           test_case "serialization" `Quick test_yojson_serialization;
           test_case "give tickets to Mr.X" `Quick test_giving_tickets_to_mr_x;
+          test_case "game over by timeout" `Quick test_game_over_by_timeout;
         ] );
     ]

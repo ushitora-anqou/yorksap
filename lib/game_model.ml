@@ -112,7 +112,7 @@ end = struct
   type t = { taxi : int; bus : int; ug : int; secret : int; double : int }
   [@@deriving show, yojson]
 
-  let default_for_mr_x = { taxi = 12; bus = 9; ug = 4; secret = 5; double = 2 }
+  let default_for_mr_x = { taxi = 12; bus = 8; ug = 4; secret = 5; double = 2 }
 
   let default_for_police =
     { taxi = 10; bus = 8; ug = 4; secret = 0; double = 0 }
@@ -441,7 +441,7 @@ end = struct
   let clock t = t.clock
 
   let has_finished t =
-    t.is_finished
+    t.is_finished || t.clock > 24
     ||
     (* Check if the current loc of Mr.X is the same as one of the policemen *)
     let mr_x_loc = t.agents.Farray.@(0) |> Agent.loc in
@@ -523,7 +523,7 @@ end = struct
            match a |> Agent.move move with Ok _ -> Some move | Error _ -> None)
 
   let skip_turn t =
-    if derive_possible_moves t = [] then Error.can't_skip
+    if derive_possible_moves t <> [] then Error.can't_skip
     else
       let t =
         let num_agents = Farray.length t.agents in
@@ -533,5 +533,6 @@ end = struct
           clock = (if t.turn + 1 = num_agents then t.clock + 1 else t.clock);
         }
       in
+      let t = { t with is_finished = has_finished t } in
       Ok t
 end
