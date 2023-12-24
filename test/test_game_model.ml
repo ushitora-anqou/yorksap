@@ -330,8 +330,6 @@ let test_derive_possible_moves_case3 () =
   assert (Game.has_finished g);
   ()
 
-(* FIXME derived possible moves *)
-(* FIXME: check if Mr.X cannot move anywhere *)
 let () =
   let open Alcotest in
   run "game_model"
