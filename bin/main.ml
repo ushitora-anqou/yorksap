@@ -1,15 +1,50 @@
 module Handler = struct
   open Yorksap
+  open Yume.Server
 
-  module Root = struct
-    let get _req = Yume.Server.respond ~status:`Not_found ""
-  end
+  let respond_yojson ?status ?(headers = []) y =
+    let content_type = (`Content_type, "application/json; charset=utf-8") in
+    Yojson.Safe.to_string y |> respond ?status ~headers:(content_type :: headers)
+
+  module Root = struct end
 
   module Api_v1 = struct
     module Game = struct
       module Root = struct
-        let get_root _req = Yume.Server.respond ~status:`Not_found ""
-        let get _req = Yume.Server.respond ~status:`Not_found ""
+        let get_root _req =
+          `Assoc
+            [
+              ( "games",
+                `List
+                  [
+                    `Assoc
+                      [
+                        ("id", `Int 1);
+                        ("name", `String "わくわく");
+                        ("desc", `String "");
+                      ];
+                    `Assoc
+                      [
+                        ("id", `Int 2);
+                        ("name", `String "ほげほげ");
+                        ("desc", `String "");
+                      ];
+                    `Assoc
+                      [
+                        ("id", `Int 3);
+                        ("name", `String "ぴよ");
+                        ("desc", `String "");
+                      ];
+                  ] );
+            ]
+          |> respond_yojson
+
+        let get req =
+          match req |> param ":id" |> int_of_string_opt with
+          | None ->
+              `Assoc [ ("error", `String "invalid game id") ]
+              |> respond_yojson ~status:`Not_found
+          | Some game_id -> `Assoc [ ("id", `Int game_id) ] |> respond_yojson
       end
     end
   end
@@ -23,7 +58,6 @@ let server () =
     let open Router in
     Handler.
       [
-        get "/" Root.get;
         scope "/api/v1" Api_v1.[
           scope "/games" Game.[
             get "" Root.get_root;
