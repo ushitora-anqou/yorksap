@@ -5,6 +5,8 @@
  (libraries
   containers
   containers-data
+  cohttp-eio
+  eio.unix
   fmt
   logs
   mirage-clock-unix

@@ -1,6 +1,6 @@
 (executable
  (public_name yorksap)
  (name main)
- (libraries yorksap cmdliner)
+ (libraries yorksap cmdliner cohttp-eio eio_main eio.unix)
  ; (flags :standard -cclib -lpcsclite)
  )
