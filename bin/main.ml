@@ -54,6 +54,14 @@ let server () =
   let open Yorksap.Yume.Server in
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
+  let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
+  let store =
+    match Yorksap.Store.connect env ~sw { dsn } with
+    | Ok x -> x
+    | Error msg -> failwith msg
+  in
+  let _ = store |> Yorksap.Store.(find Q.query (7, 13)) in
+
   let routes =
     let open Router in
     Handler.

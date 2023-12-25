@@ -31,6 +31,9 @@ depends: [
   "ppx_deriving"
   "ppx_deriving_yojson"
   "ptime"
+  "caqti"
+  "caqti-driver-sqlite3"
+  "caqti-eio"
   "yojson"
 ]
 build: [

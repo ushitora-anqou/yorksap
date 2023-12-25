@@ -1,6 +1,13 @@
 (executable
  (public_name yorksap)
  (name main)
- (libraries yorksap cmdliner cohttp-eio eio_main eio.unix)
- ; (flags :standard -cclib -lpcsclite)
- )
+ (libraries
+  yorksap
+  cmdliner
+  cohttp-eio
+  eio_main
+  eio.unix
+  caqti
+  caqti-eio
+  caqti-eio.unix
+  caqti-driver-sqlite3))

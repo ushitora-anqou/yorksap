@@ -6,6 +6,10 @@
   containers
   containers-data
   cohttp-eio
+  caqti
+  caqti-eio
+  caqti-eio.unix
+  caqti-driver-sqlite3
   eio.unix
   fmt
   logs
