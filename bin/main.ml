@@ -6,45 +6,95 @@ module Handler = struct
     let content_type = (`Content_type, "application/json; charset=utf-8") in
     Yojson.Safe.to_string y |> respond ?status ~headers:(content_type :: headers)
 
-  module Root = struct end
-
   module Api_v1 = struct
-    module Game = struct
+    module Room = struct
       module Root = struct
         let get_root _req =
-          `Assoc
-            [
-              ( "games",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("id", `Int 1);
-                        ("name", `String "わくわく");
-                        ("desc", `String "");
-                      ];
-                    `Assoc
-                      [
-                        ("id", `Int 2);
-                        ("name", `String "ほげほげ");
-                        ("desc", `String "");
-                      ];
-                    `Assoc
-                      [
-                        ("id", `Int 3);
-                        ("name", `String "ぴよ");
-                        ("desc", `String "");
-                      ];
-                  ] );
-            ]
-          |> respond_yojson
+          let resp =
+            `Assoc
+              [
+                ( "roomlist",
+                  `List
+                    [
+                      `Assoc
+                        [
+                          ("id", `String "aa317643-a121-49e8-a7f9-6698a7a8be31");
+                          ("name", `String "room1");
+                        ];
+                      `Assoc
+                        [
+                          ("id", `String "efc85b80-8c54-4bf4-a5c0-9855a7952c45");
+                          ("name", `String "wakuwaku-yorkland");
+                        ];
+                      `Assoc
+                        [
+                          ("id", `String "8a3cba69-a048-409a-a4cb-0f79b3bd1a95");
+                          ("name", `String "welcome room");
+                        ];
+                    ] );
+              ]
+          in
+          respond_yojson resp
 
         let get req =
-          match req |> param ":id" |> int_of_string_opt with
-          | None ->
-              `Assoc [ ("error", `String "invalid game id") ]
-              |> respond_yojson ~status:`Not_found
-          | Some game_id -> `Assoc [ ("id", `Int game_id) ] |> respond_yojson
+          let room_id = Yume.Server.param ":id" req in
+          let resp =
+            `Assoc
+              [
+                ("roomId", `String room_id);
+                ("phase", `Int 2);
+                ( "history",
+                  `List
+                    [
+                      `Assoc
+                        [
+                          ("phase", `Int 0);
+                          ( "player",
+                            `List
+                              [
+                                `Assoc [ ("name", `String "alice") ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Bob");
+                                    ("position", `Int 12);
+                                    ("selectedTicket", `String "TAXI");
+                                  ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Bob");
+                                    ("position", `Int 12);
+                                    ("selectedTicket", `String "TAXI");
+                                  ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Charlie");
+                                    ("position", `Int 123);
+                                    ("selectedTicket", `String "BUS");
+                                  ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Dave");
+                                    ("position", `Int 101);
+                                    ("selectedTicket", `String "UNDERGROUND");
+                                  ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Eve");
+                                    ("position", `Int 112);
+                                    ("selectedTicket", `String "TAXI");
+                                  ];
+                                `Assoc
+                                  [
+                                    ("name", `String "Frank");
+                                    ("position", `Int 134);
+                                    ("selectedTicket", `String "TAXI");
+                                  ];
+                              ] );
+                        ];
+                    ] );
+              ]
+          in
+          respond_yojson resp
       end
     end
   end
@@ -67,9 +117,9 @@ let server () =
     Handler.
       [
         scope "/api/v1" Api_v1.[
-          scope "/games" Game.[
+          scope "/room" Room.[
             get "" Root.get_root;
-            get "/:id" Root.get
+            get "/:id" Root.get;
           ];
         ];
       ] [@ocamlformat "disable"]
