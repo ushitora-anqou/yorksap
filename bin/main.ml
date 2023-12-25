@@ -112,6 +112,14 @@ let server () =
   in
   let _ = store |> Yorksap.Store.(find Q.query (7, 13)) in
 
+  let cors =
+    Cors.
+      [
+        make "/api/*"
+          ~methods:[ `POST; `PUT; `DELETE; `GET; `PATCH; `OPTIONS ]
+          ();
+      ]
+  in
   let routes =
     let open Router in
     Handler.
@@ -124,7 +132,9 @@ let server () =
         ];
       ] [@ocamlformat "disable"]
   in
-  let handler = Logger.use @@ Router.use routes default_handler in
+  let handler =
+    Logger.use @@ Cors.use cors @@ Router.use routes default_handler
+  in
   start_server env ~sw handler @@ fun () -> ()
 
 let () =
