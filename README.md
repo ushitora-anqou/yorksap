@@ -13,3 +13,8 @@ opam install . --deps-only --with-test
 #dune runtest
 OCAMLRUNPARAM=b DSN="sqlite3://$PWD/yorksap.sqlite3" dune exec bin/main.exe server
 ```
+
+## Endpoints
+
+- GET /api/v1/room
+- GET /api/v1/room/:id
