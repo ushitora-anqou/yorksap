@@ -24,10 +24,15 @@ module Handler = struct
             in
             `Assoc [ ("roomlist", `List roomlist) ] |> respond_yojson
 
-      let get req =
-        let _room_id = Yume.Server.param ":id" req in
-        let resp = `Assoc [ ("roomName", `String "room1") ] in
-        respond_yojson resp
+      let get store req =
+        let room_id = Yume.Server.param ":id" req in
+        match store |> Store.select_room_by_uuid ~uuid:room_id with
+        | Error _ ->
+            Logs.debug (fun m -> m "Couldn't get room");
+            respond_error ~status:`Bad_request "Couldn't get room"
+        | Ok (_uuid, name) ->
+            let resp = `Assoc [ ("roomName", `String name) ] in
+            respond_yojson resp
     end
 
     module Game = struct
@@ -100,6 +105,8 @@ module Handler = struct
   end
 end
 
+let generate_uuid () = Uuidm.(v `V4 |> to_string)
+
 let server () =
   let open Yorksap.Yume.Server in
   Eio_main.run @@ fun env ->
@@ -110,10 +117,25 @@ let server () =
     | Ok x -> x
     | Error msg -> failwith msg
   in
-  let _ = store |> Yorksap.Store.(find Q.query (7, 13)) in
   (match store |> Yorksap.Store.create_table_room with
   | Ok () -> ()
   | Error msg -> failwith msg);
+
+  (* For debug *)
+  (let uuid = generate_uuid () in
+   let name = "test game " ^ uuid in
+   let game =
+     let map = Yorksap.Game_data.London.map in
+     let init_locs =
+       [ 138; 50; 53; 198; 155 ]
+       |> List.map (fun id -> Yorksap.Game_model.Loc.make ~id ())
+     in
+     Yorksap.Game_model.Game.(
+       make ~init_locs ~map () |> to_yojson |> Yojson.Safe.to_string)
+   in
+   match store |> Yorksap.Store.insert_room ~uuid ~name ~game with
+   | Ok () -> ()
+   | Error msg -> failwith msg);
 
   let cors =
     Cors.
@@ -129,8 +151,8 @@ let server () =
       [
         scope "/api/v1" Api_v1.[
           scope "/room" [
-            get "" Room.get_root;
-            get "/:id" Room.get;
+            get "" (Room.get_root store);
+            get "/:id" (Room.get store);
           ];
           scope "/game" [
             get "/:id" Game.get;

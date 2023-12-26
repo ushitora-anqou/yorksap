@@ -11,6 +11,9 @@ doc: "https://url/to/documentation"
 bug-reports: "https://github.com/username/reponame/issues"
 depends: [
   "alcotest" {with-test}
+  "caqti"
+  "caqti-driver-sqlite3"
+  "caqti-eio"
   "cmdliner"
   "cohttp"
   "cohttp-eio"
@@ -31,9 +34,7 @@ depends: [
   "ppx_deriving"
   "ppx_deriving_yojson"
   "ptime"
-  "caqti"
-  "caqti-driver-sqlite3"
-  "caqti-eio"
+  "uuidm"
   "yojson"
 ]
 build: [

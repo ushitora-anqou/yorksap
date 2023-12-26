@@ -46,14 +46,19 @@ CREATE TABLE IF NOT EXISTS room (
 |}
 
   let insert_room =
-    (Caqti_type.(t3 string string string) ->. Caqti_type.unit)
+    (Caqti_type.(t3 octets octets octets) ->. Caqti_type.unit)
       {|INSERT INTO room (uuid, name, game) VALUES (?, ?, ?)|}
 
   let select_rooms =
-    (Caqti_type.unit ->* Caqti_type.(t2 string string))
+    (Caqti_type.unit ->* Caqti_type.(t2 octets octets))
       {|SELECT uuid, name FROM room|}
+
+  let select_room_by_uuid =
+    (Caqti_type.octets ->! Caqti_type.(t2 octets octets))
+      {|SELECT uuid, name FROM room WHERE uuid = ?|}
 end
 
 let create_table_room t = t |> exec Q.create_table_room ()
 let insert_room ~uuid ~name ~game t = t |> exec Q.insert_room (uuid, name, game)
 let select_rooms t = t |> collect_list Q.select_rooms ()
+let select_room_by_uuid ~uuid t = t |> find Q.select_room_by_uuid uuid

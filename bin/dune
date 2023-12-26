@@ -2,12 +2,13 @@
  (public_name yorksap)
  (name main)
  (libraries
-  yorksap
-  cmdliner
-  cohttp-eio
-  eio_main
-  eio.unix
   caqti
+  caqti-driver-sqlite3
   caqti-eio
   caqti-eio.unix
-  caqti-driver-sqlite3))
+  cmdliner
+  cohttp-eio
+  eio.unix
+  eio_main
+  uuidm
+  yorksap))
