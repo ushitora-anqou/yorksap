@@ -6,34 +6,23 @@ module Handler = struct
     let content_type = (`Content_type, "application/json; charset=utf-8") in
     Yojson.Safe.to_string y |> respond ?status ~headers:(content_type :: headers)
 
+  let respond_error ~status msg =
+    `Assoc [ ("error", `String msg) ] |> respond_yojson ~status
+
   module Api_v1 = struct
     module Room = struct
-      let get_root _req =
-        let resp =
-          `Assoc
-            [
-              ( "roomlist",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("id", `String "aa317643-a121-49e8-a7f9-6698a7a8be31");
-                        ("name", `String "room1");
-                      ];
-                    `Assoc
-                      [
-                        ("id", `String "efc85b80-8c54-4bf4-a5c0-9855a7952c45");
-                        ("name", `String "wakuwaku-yorkland");
-                      ];
-                    `Assoc
-                      [
-                        ("id", `String "8a3cba69-a048-409a-a4cb-0f79b3bd1a95");
-                        ("name", `String "welcome room");
-                      ];
-                  ] );
-            ]
-        in
-        respond_yojson resp
+      let get_root store _req =
+        match Store.select_rooms store with
+        | Error _ ->
+            Logs.debug (fun m -> m "Couldn't select rooms");
+            respond_error ~status:`Bad_request "Couldn't select rooms"
+        | Ok rooms ->
+            let roomlist =
+              rooms
+              |> List.map (fun (id, name) ->
+                     `Assoc [ ("id", `String id); ("name", `String name) ])
+            in
+            `Assoc [ ("roomlist", `List roomlist) ] |> respond_yojson
 
       let get req =
         let _room_id = Yume.Server.param ":id" req in
@@ -122,6 +111,9 @@ let server () =
     | Error msg -> failwith msg
   in
   let _ = store |> Yorksap.Store.(find Q.query (7, 13)) in
+  (match store |> Yorksap.Store.create_table_room with
+  | Ok () -> ()
+  | Error msg -> failwith msg);
 
   let cors =
     Cors.

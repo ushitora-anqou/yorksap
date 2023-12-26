@@ -20,8 +20,40 @@ let find query arg t =
          let (module Db : Caqti_eio.CONNECTION) = c in
          Db.find query arg)
 
+let exec query arg t =
+  t
+  |> use (fun c ->
+         let (module Db : Caqti_eio.CONNECTION) = c in
+         Db.exec query arg)
+
+let collect_list query arg t =
+  t
+  |> use (fun c ->
+         let (module Db : Caqti_eio.CONNECTION) = c in
+         Db.collect_list query arg)
+
 module Q = struct
   open Caqti_request.Infix
 
-  let query = (Caqti_type.(t2 int int) ->! Caqti_type.int) "SELECT ? + ?"
+  let create_table_room =
+    (Caqti_type.unit ->. Caqti_type.unit)
+      {|
+CREATE TABLE IF NOT EXISTS room (
+  uuid BLOB PRIMARY KEY,
+  name BLOB,
+  game BLOB
+) STRICT
+|}
+
+  let insert_room =
+    (Caqti_type.(t3 string string string) ->. Caqti_type.unit)
+      {|INSERT INTO room (uuid, name, game) VALUES (?, ?, ?)|}
+
+  let select_rooms =
+    (Caqti_type.unit ->* Caqti_type.(t2 string string))
+      {|SELECT uuid, name FROM room|}
 end
+
+let create_table_room t = t |> exec Q.create_table_room ()
+let insert_room ~uuid ~name ~game t = t |> exec Q.insert_room (uuid, name, game)
+let select_rooms t = t |> collect_list Q.select_rooms ()
