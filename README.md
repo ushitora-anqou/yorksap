@@ -18,3 +18,4 @@ OCAMLRUNPARAM=b DSN="sqlite3://$PWD/yorksap.sqlite3" dune exec bin/main.exe serv
 
 - GET /api/v1/room
 - GET /api/v1/room/:id
+- GET /api/v1/game/:id
