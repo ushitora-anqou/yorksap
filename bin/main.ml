@@ -37,7 +37,7 @@ module Handler = struct
 
       let get req =
         let _room_id = Yume.Server.param ":id" req in
-        let resp = `Assoc [ ("roomlist", `String "room1") ] in
+        let resp = `Assoc [ ("roomName", `String "room1") ] in
         respond_yojson resp
     end
 
@@ -71,12 +71,6 @@ module Handler = struct
                           `List
                             [
                               `Assoc [ ("name", `String "alice") ];
-                              `Assoc
-                                [
-                                  ("name", `String "Bob");
-                                  ("position", `Int 12);
-                                  ("selectedTicket", `String "TAXI");
-                                ];
                               `Assoc
                                 [
                                   ("name", `String "Bob");
