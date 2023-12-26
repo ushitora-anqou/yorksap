@@ -36,71 +36,165 @@ module Handler = struct
     end
 
     module Game = struct
-      let get req =
+      module Yojson_of_history = struct
+        open Game_model
+
+        let yojson_of_init_loc ~users i = function
+          | None ->
+              (* hidden loc *)
+              `Assoc [ ("name", `String (List.nth users i)) ]
+          | Some loc ->
+              `Assoc
+                [
+                  ("name", `String (List.nth users i));
+                  ("position", `Int (Loc.id loc));
+                ]
+
+        let split_list n l =
+          l
+          |> List.fold_left
+               (fun acc x ->
+                 if List.length (List.hd acc) < n then
+                   (x :: List.hd acc) :: List.tl acc
+                 else List.rev (List.hd acc) :: List.tl acc)
+               [ [] ]
+          |> List.rev
+
+        let string_of_ticket = function
+          | `Taxi -> "TAXI"
+          | `Bus -> "BUS"
+          | `Ug -> "UNDERGROUND"
+          | `Secret -> "SECRET"
+
+        let yojson_of_move ~name (move : Move.single_with_hidden option) :
+            Yojson.Safe.t =
+          let fields = [ ("name", `String name) ] in
+          let fields =
+            match move with
+            | None -> fields
+            | Some (`Hidden t) ->
+                ("selectedTicket", `String (string_of_ticket t)) :: fields
+            | Some (#Move.single as move) ->
+                ( "selectedTicket",
+                  `String (Ticket.of_move_single move |> string_of_ticket) )
+                :: ( "position",
+                     `Int
+                       (Loc.id
+                          (match move with
+                          | `Taxi loc | `Bus loc | `Ug loc | `Secret loc -> loc))
+                   )
+                :: fields
+          in
+          `Assoc fields
+
+        let f ?(num_agents = 6) ~from ~users history =
+          let init_locs, moves = history |> History.get_view ~from in
+          let phase0 : Yojson.Safe.t =
+            `Assoc
+              [
+                ("phase", `Int 0);
+                ( "player",
+                  `List (init_locs |> List.mapi (yojson_of_init_loc ~users)) );
+              ]
+          in
+          let phases : Yojson.Safe.t list =
+            moves
+            |> List.fold_left
+                 (fun acc -> function
+                   | `Double (first, second) ->
+                       Some second :: None :: None :: None :: None :: None
+                       :: Some first :: acc
+                   | #Move.single_with_hidden as move -> Some move :: acc)
+                 []
+            |> List.rev |> split_list num_agents
+            |> List.mapi (fun i moves ->
+                   `Assoc
+                     [
+                       ("phase", `Int i);
+                       ( "player",
+                         `List
+                           (moves
+                           |> List.mapi (fun i move ->
+                                  yojson_of_move ~name:(List.nth users i) move)
+                           ) );
+                     ])
+          in
+          `List (phase0 :: phases)
+      end
+
+      let get store req =
+        let ( let* ) = Result.bind in
         let room_id = Yume.Server.param ":id" req in
-        let resp =
-          `Assoc
-            [
-              ("roomId", `String room_id);
-              ("phase", `Int 3);
-              ("turn", `String "Charlie");
-              ( "nowPosition",
-                `List
-                  [
-                    `Assoc [ ("name", `String "Alice") ];
-                    `Assoc [ ("name", `String "Bob"); ("position", `Int 15) ];
-                    `Assoc
-                      [ ("name", `String "Charlie"); ("position", `Int 130) ];
-                    `Assoc [ ("name", `String "Dave"); ("position", `Int 105) ];
-                    `Assoc [ ("name", `String "Eve"); ("position", `Int 112) ];
-                    `Assoc [ ("name", `String "Frank"); ("position", `Int 139) ];
-                  ] );
-              ( "history",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("phase", `Int 0);
-                        ( "player",
-                          `List
-                            [
-                              `Assoc [ ("name", `String "alice") ];
-                              `Assoc
-                                [
-                                  ("name", `String "Bob");
-                                  ("position", `Int 12);
-                                  ("selectedTicket", `String "TAXI");
-                                ];
-                              `Assoc
-                                [
-                                  ("name", `String "Charlie");
-                                  ("position", `Int 123);
-                                  ("selectedTicket", `String "BUS");
-                                ];
-                              `Assoc
-                                [
-                                  ("name", `String "Dave");
-                                  ("position", `Int 101);
-                                  ("selectedTicket", `String "UNDERGROUND");
-                                ];
-                              `Assoc
-                                [
-                                  ("name", `String "Eve");
-                                  ("position", `Int 112);
-                                  ("selectedTicket", `String "TAXI");
-                                ];
-                              `Assoc
-                                [
-                                  ("name", `String "Frank");
-                                  ("position", `Int 134);
-                                  ("selectedTicket", `String "TAXI");
-                                ];
-                            ] );
-                      ];
-                  ] );
-            ]
-        in
-        respond_yojson resp
+        match
+          let* game =
+            store
+            |> Store.select_game_by_uuid ~uuid:room_id
+            |> Result.map Yojson.Safe.from_string
+          in
+          let* game =
+            match game with
+            | `Null ->
+                (* The room exists, but the game hasn't started yet *)
+                Ok None
+            | _ ->
+                game
+                |> Game_model.Game.of_yojson ~map:Game_data.London.map
+                |> Result.map Option.some
+          in
+          let* users =
+            store |> Store.select_users_by_room_uuid ~room_uuid:room_id
+          in
+          let* () =
+            if
+              users
+              |> List.mapi (fun i (j, _) -> i = j)
+              |> List.fold_left ( && ) true
+            then Ok ()
+            else Error "corrupted user list"
+          in
+          let users = users |> List.map snd in
+          Ok (game, users)
+        with
+        | Error msg ->
+            Logs.debug (fun m -> m "Couldn't get game: %s" msg);
+            respond_error ~status:`Bad_request "couldn't get game"
+        | Ok (None, users) ->
+            (* The room exists, but the game hasn't started yet *)
+            `Assoc
+              [
+                ("roomId", `String room_id);
+                ("phase", `Int (-1));
+                ( "nowPosition",
+                  `List
+                    (users
+                    |> List.map (fun username ->
+                           `Assoc [ ("name", `String username) ])) );
+              ]
+            |> respond_yojson
+        | Ok (Some game, users) ->
+            let open Game_model in
+            let history = Game.history game in
+            let resp =
+              `Assoc
+                [
+                  ("roomId", `String room_id);
+                  ("phase", `Int (Game.turn game));
+                  ("turn", `String (List.nth users (Game.turn game)));
+                  ( "nowPosition",
+                    `List
+                      (List.combine users (Game.agents game)
+                      |> List.map (fun (username, agent) ->
+                             (* FIXME *)
+                             `Assoc
+                               [
+                                 ("name", `String username);
+                                 ( "position",
+                                   `Int (agent |> Agent.loc |> Loc.id) );
+                               ])) );
+                  ("history", Yojson_of_history.f ~users ~from:`Police history);
+                ]
+            in
+            respond_yojson resp
     end
   end
 end
@@ -120,22 +214,48 @@ let server () =
   (match store |> Yorksap.Store.create_table_room with
   | Ok () -> ()
   | Error msg -> failwith msg);
+  (match store |> Yorksap.Store.create_table_user with
+  | Ok () -> ()
+  | Error msg -> failwith msg);
 
   (* For debug *)
-  (let uuid = generate_uuid () in
+  (let expect_ok = function Ok () -> () | Error msg -> failwith msg in
+   let uuid = generate_uuid () in
    let name = "test game " ^ uuid in
+   store
+   |> Yorksap.Store.insert_room ~uuid ~name ~game:(Yojson.Safe.to_string `Null)
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:0 ~name:"ゆ〜ざ〜０"
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:1 ~name:"ゆ〜ざ〜１"
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:2 ~name:"ゆ〜ざ〜２"
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:3 ~name:"ゆ〜ざ〜３"
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:4 ~name:"ゆ〜ざ〜４"
+   |> expect_ok;
+   store
+   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:5 ~name:"ゆ〜ざ〜５"
+   |> expect_ok;
    let game =
      let map = Yorksap.Game_data.London.map in
      let init_locs =
-       [ 138; 50; 53; 198; 155 ]
+       [ 138; 50; 53; 198; 155; 100 ]
        |> List.map (fun id -> Yorksap.Game_model.Loc.make ~id ())
      in
      Yorksap.Game_model.Game.(
        make ~init_locs ~map () |> to_yojson |> Yojson.Safe.to_string)
    in
-   match store |> Yorksap.Store.insert_room ~uuid ~name ~game with
+   (match store |> Yorksap.Store.update_game_by_uuid ~uuid ~game with
    | Ok () -> ()
    | Error msg -> failwith msg);
+   ());
 
   let cors =
     Cors.
@@ -155,7 +275,7 @@ let server () =
             get "/:id" (Room.get store);
           ];
           scope "/game" [
-            get "/:id" Game.get;
+            get "/:id" (Game.get store);
           ];
         ];
       ] [@ocamlformat "disable"]
