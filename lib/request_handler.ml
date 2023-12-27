@@ -107,6 +107,41 @@ module Api_v1 = struct
                       ("accessToken", `String access_token); ("turn", `Int turn);
                     ]
                   |> respond_yojson))
+
+    let login store req =
+      let room_id = Yume.Server.param ":id" req in
+      match
+        let a =
+          req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
+        in
+        ( List.assoc "userName" a |> to_string,
+          List.assoc "userPassword" a |> to_string )
+      with
+      | exception _ -> respond_error ~status:`Bad_request "invalid request"
+      | user_name, user_password -> (
+          match
+            store
+            |> Store.select_user_by_room_uuid_and_name ~room_uuid:room_id
+                 ~name:user_name
+          with
+          | Error msg ->
+              Logs.err (fun m ->
+                  m "couldn't get users by room uuid and user name: %s: %s: %s"
+                    room_id user_name msg);
+              respond_error ~status:`Bad_request "couldn't get users"
+          | Ok (_, encrypted_password, _)
+            when not
+                   Bcrypt.(
+                     verify user_password (hash_of_string encrypted_password))
+            ->
+              Logs.err (fun m ->
+                  m "couldn't verify user password: %s: %s" room_id user_name);
+              respond_error ~status:`Unauthorized
+                "couldn't verify your password"
+          | Ok (turn, _, access_token) ->
+              `Assoc
+                [ ("accessToken", `String access_token); ("turn", `Int turn) ]
+              |> respond_yojson)
   end
 
   module Game = struct
@@ -375,6 +410,7 @@ let start_http_server env ~sw k =
           post "" (Room.post_root store);
           get "/:id" (Room.get store);
           post "/:id/register" (Room.register store);
+          post "/:id/login" (Room.login store);
         ];
         scope "/game" [
           get "/:id" (Game.get ~game_data ~store);

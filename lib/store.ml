@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS user (
   access_token TEXT NOT NULL,
 
   UNIQUE (room_uuid, turn),
+  UNIQUE (room_uuid, name),
   FOREIGN KEY (room_uuid) REFERENCES room(uuid)
 ) STRICT
 |}
@@ -85,6 +86,10 @@ CREATE TABLE IF NOT EXISTS user (
     (Caqti_type.(t5 string int string string string) ->. Caqti_type.unit)
       {|INSERT INTO user (room_uuid, turn, name, encrypted_password, access_token) VALUES (?, ?, ?, ?, ?)|}
 
+  let select_user_by_room_uuid_and_name =
+    (Caqti_type.(t2 string string) ->! Caqti_type.(t3 int string string))
+      {|SELECT turn, encrypted_password, access_token FROM user WHERE room_uuid = ? AND name = ?|}
+
   let select_users_by_room_uuid =
     (Caqti_type.string ->* Caqti_type.(t2 int string))
       {|SELECT turn, name FROM user WHERE room_uuid = ? ORDER BY turn ASC|}
@@ -103,6 +108,9 @@ let update_game_by_uuid ~uuid ~game t =
 let insert_user ~room_uuid ~turn ~name ~encrypted_password ~access_token t =
   t
   |> exec Q.insert_user (room_uuid, turn, name, encrypted_password, access_token)
+
+let select_user_by_room_uuid_and_name ~room_uuid ~name t =
+  t |> find Q.select_user_by_room_uuid_and_name (room_uuid, name)
 
 let select_users_by_room_uuid ~room_uuid t =
   t |> collect_list Q.select_users_by_room_uuid room_uuid
