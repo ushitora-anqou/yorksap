@@ -15,4 +15,5 @@
   logs
   mirage-clock-unix
   ptime
+  uuidm
   yojson))

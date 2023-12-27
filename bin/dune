@@ -1,14 +1,4 @@
 (executable
  (public_name yorksap)
  (name main)
- (libraries
-  caqti
-  caqti-driver-sqlite3
-  caqti-eio
-  caqti-eio.unix
-  cmdliner
-  cohttp-eio
-  eio.unix
-  eio_main
-  uuidm
-  yorksap))
+ (libraries cmdliner cohttp-eio eio.unix eio_main yorksap))
