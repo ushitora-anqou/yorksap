@@ -68,6 +68,45 @@ module Api_v1 = struct
       | Ok (_uuid, name) ->
           let resp = `Assoc [ ("roomName", `String name) ] in
           respond_yojson resp
+
+    let register store req =
+      let room_id = Yume.Server.param ":id" req in
+      match
+        let a =
+          req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
+        in
+        ( List.assoc "userName" a |> to_string,
+          List.assoc "userPassword" a |> to_string )
+      with
+      | exception _ -> respond_error ~status:`Bad_request "invalid request"
+      | user_name, user_password -> (
+          let encrypted_user_password =
+            Bcrypt.(hash user_password |> string_of_hash)
+          in
+          match store |> Store.select_users_by_room_uuid ~room_uuid:room_id with
+          | Error msg ->
+              Logs.err (fun m ->
+                  m "couldn't get users by room uuid: %s: %s" room_id msg);
+              respond_error ~status:`Bad_request "couldn't get users"
+          | Ok users when List.length users >= 6 ->
+              Logs.err (fun m ->
+                  m "couldn't register; already full: %s" room_id);
+              respond_error ~status:`Bad_request
+                "couldn't register; already full"
+          | Ok users -> (
+              let turn = List.length users in
+              let access_token = Crypto.SecureRandom.unique_token () in
+              match
+                store
+                |> Store.insert_user ~room_uuid:room_id ~turn ~name:user_name
+                     ~encrypted_password:encrypted_user_password ~access_token
+              with
+              | _ ->
+                  `Assoc
+                    [
+                      ("accessToken", `String access_token); ("turn", `Int turn);
+                    ]
+                  |> respond_yojson))
   end
 
   module Game = struct
@@ -314,7 +353,8 @@ let start_http_server env ~sw k =
 
   let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
   let store = establish_store env ~sw dsn in
-  generate_dummy_data_for_debug ~store ~game_data;
+
+  (*generate_dummy_data_for_debug ~store ~game_data;*)
 
   (* Start HTTP server *)
   let open Yume.Server in
@@ -334,6 +374,7 @@ let start_http_server env ~sw k =
           get "" (Room.get_root store);
           post "" (Room.post_root store);
           get "/:id" (Room.get store);
+          post "/:id/register" (Room.register store);
         ];
         scope "/game" [
           get "/:id" (Game.get ~game_data ~store);
