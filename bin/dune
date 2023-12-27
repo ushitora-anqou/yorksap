@@ -1,4 +1,10 @@
 (executable
  (public_name yorksap)
  (name main)
- (libraries cmdliner cohttp-eio eio.unix eio_main yorksap))
+ (libraries
+  cmdliner
+  cohttp-eio
+  eio.unix
+  eio_main
+  mirage-crypto-rng-eio
+  yorksap))

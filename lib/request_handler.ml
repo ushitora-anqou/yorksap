@@ -6,6 +6,10 @@ let respond_yojson ?status ?(headers = []) y =
 let respond_error ~status msg =
   `Assoc [ ("error", `String msg) ] |> respond_yojson ~status
 
+let to_assoc = Yojson.Safe.Util.to_assoc
+let to_string = Yojson.Safe.Util.to_string
+let generate_uuid () = Uuidm.(v `V4 |> to_string)
+
 module Api_v1 = struct
   module Room = struct
     let get_root store _req =
@@ -20,6 +24,40 @@ module Api_v1 = struct
                    `Assoc [ ("id", `String id); ("name", `String name) ])
           in
           `Assoc [ ("roomlist", `List roomlist) ] |> respond_yojson
+
+    let post_root store req =
+      match
+        let a =
+          req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
+        in
+        ( List.assoc "roomName" a |> to_string,
+          List.assoc "userName" a |> to_string,
+          List.assoc "userPassword" a |> to_string )
+      with
+      | exception _ -> respond_error ~status:`Bad_request "invalid request"
+      | room_name, user_name, user_password -> (
+          let encrypted_user_password =
+            Bcrypt.(hash user_password |> string_of_hash)
+          in
+          let room_id = generate_uuid () in
+          let access_token = Crypto.SecureRandom.unique_token () in
+          let game = Yojson.Safe.to_string `Null in
+          match
+            store
+            |> Store.create_room ~room_name ~user_name ~encrypted_user_password
+                 ~room_id ~access_token ~game
+          with
+          | Error msg ->
+              Logs.err (fun m -> m "couldn't make a room: %s" msg);
+              respond_error ~status:`Internal_server_error
+                "couldn't make a room"
+          | Ok () ->
+              `Assoc
+                [
+                  ("roomId", `String room_id);
+                  ("accessToken", `String access_token);
+                ]
+              |> respond_yojson)
 
     let get store req =
       let room_id = Yume.Server.param ":id" req in
@@ -204,8 +242,6 @@ module Api_v1 = struct
   end
 end
 
-let generate_uuid () = Uuidm.(v `V4 |> to_string)
-
 let load_game_data file_path =
   let ic = open_in_bin file_path in
   Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
@@ -232,15 +268,35 @@ let generate_dummy_data_for_debug ~store ~game_data =
   (let expect_ok = function Ok () -> () | Error msg -> failwith msg in
    let uuid = generate_uuid () in
    let name = "test game " ^ uuid in
+   let encrypted_password = "" in
+   let access_token = "" in
    store
    |> Store.insert_room ~uuid ~name ~game:(Yojson.Safe.to_string `Null)
    |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:0 ~name:"ゆ〜ざ〜０" |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:1 ~name:"ゆ〜ざ〜１" |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:2 ~name:"ゆ〜ざ〜２" |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:3 ~name:"ゆ〜ざ〜３" |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:4 ~name:"ゆ〜ざ〜４" |> expect_ok;
-   store |> Store.insert_user ~room_uuid:uuid ~turn:5 ~name:"ゆ〜ざ〜５" |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:0 ~name:"ゆ〜ざ〜０"
+   |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:1 ~name:"ゆ〜ざ〜１"
+   |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:2 ~name:"ゆ〜ざ〜２"
+   |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:3 ~name:"ゆ〜ざ〜３"
+   |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:4 ~name:"ゆ〜ざ〜４"
+   |> expect_ok;
+   store
+   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
+        ~turn:5 ~name:"ゆ〜ざ〜５"
+   |> expect_ok;
    let game =
      let map = game_data.Game_data.map in
      let init_locs = game_data |> Game_data.generate_init_locs 6 in
@@ -276,6 +332,7 @@ let start_http_server env ~sw k =
       scope "/api/v1" Api_v1.[
         scope "/room" [
           get "" (Room.get_root store);
+          post "" (Room.post_root store);
           get "/:id" (Room.get store);
         ];
         scope "/game" [

@@ -3,17 +3,22 @@
  (preprocess
   (pps ppx_deriving.show ppx_deriving.make ppx_deriving_yojson))
  (libraries
-  containers
-  containers-data
-  cohttp-eio
+  base64
   caqti
+  caqti-driver-sqlite3
   caqti-eio
   caqti-eio.unix
-  caqti-driver-sqlite3
+  cohttp-eio
+  containers
+  containers-data
+  cstruct
   eio.unix
   fmt
   logs
   mirage-clock-unix
+  mirage-crypto-rng
+  mirage-crypto-rng-eio
   ptime
+  safepass
   uuidm
   yojson))

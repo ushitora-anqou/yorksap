@@ -1,5 +1,6 @@
 let server () =
   Eio_main.run @@ fun env ->
+  Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
   Eio.Switch.run @@ fun sw ->
   Yorksap.Request_handler.start_http_server env ~sw (fun () -> ())
 

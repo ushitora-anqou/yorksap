@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS user (
   room_uuid TEXT NOT NULL,
   turn INT NOT NULL,
   name TEXT NOT NULL,
+  encrypted_password TEXT NOT NULL,
+  access_token TEXT NOT NULL,
 
   UNIQUE (room_uuid, turn),
   FOREIGN KEY (room_uuid) REFERENCES room(uuid)
@@ -80,8 +82,8 @@ CREATE TABLE IF NOT EXISTS user (
       {|UPDATE room SET game = ? WHERE uuid = ?|}
 
   let insert_user =
-    (Caqti_type.(t3 string int string) ->. Caqti_type.unit)
-      {|INSERT INTO user (room_uuid, turn, name) VALUES (?, ?, ?)|}
+    (Caqti_type.(t5 string int string string string) ->. Caqti_type.unit)
+      {|INSERT INTO user (room_uuid, turn, name, encrypted_password, access_token) VALUES (?, ?, ?, ?, ?)|}
 
   let select_users_by_room_uuid =
     (Caqti_type.string ->* Caqti_type.(t2 int string))
@@ -98,8 +100,26 @@ let select_game_by_uuid ~uuid t = t |> find Q.select_game_by_uuid uuid
 let update_game_by_uuid ~uuid ~game t =
   t |> exec Q.update_game_by_uuid (game, uuid)
 
-let insert_user ~room_uuid ~turn ~name t =
-  t |> exec Q.insert_user (room_uuid, turn, name)
+let insert_user ~room_uuid ~turn ~name ~encrypted_password ~access_token t =
+  t
+  |> exec Q.insert_user (room_uuid, turn, name, encrypted_password, access_token)
 
 let select_users_by_room_uuid ~room_uuid t =
   t |> collect_list Q.select_users_by_room_uuid room_uuid
+
+let create_room ~room_name ~user_name ~encrypted_user_password ~room_id
+    ~access_token ~game t =
+  t
+  |> use @@ fun c ->
+     let (module Db : Caqti_eio.CONNECTION) = c in
+     match Db.start () with
+     | Error e -> Error e
+     | Ok () -> (
+         try
+           Db.exec Q.insert_room (room_id, room_name, game) |> Result.get_ok;
+           Db.exec Q.insert_user
+             (room_id, 0, user_name, encrypted_user_password, access_token)
+           |> Result.get_ok;
+           Db.commit () |> Result.get_ok;
+           Ok ()
+         with _ -> Db.rollback ())
