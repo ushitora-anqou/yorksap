@@ -110,7 +110,7 @@ module Handler = struct
             |> List.mapi (fun i moves ->
                    `Assoc
                      [
-                       ("phase", `Int i);
+                       ("phase", `Int (i + 1));
                        ( "player",
                          `List
                            (moves
@@ -185,12 +185,22 @@ module Handler = struct
                       (List.combine users (Game.agents game)
                       |> List.map (fun (username, agent) ->
                              (* FIXME *)
-                             `Assoc
-                               [
-                                 ("name", `String username);
+                             let role = Agent.role agent in
+                             let clock = Game.clock game in
+                             let fields = [ ("name", `String username) ] in
+                             let fields =
+                               if
+                                 role = `Police
+                                 || role = `MrX
+                                    && (clock = 3 || clock = 8 || clock = 13
+                                      || clock = 18 || clock = 24)
+                               then
                                  ( "position",
-                                   `Int (agent |> Agent.loc |> Loc.id) );
-                               ])) );
+                                   `Int (agent |> Agent.loc |> Loc.id) )
+                                 :: fields
+                               else fields
+                             in
+                             `Assoc fields)) );
                   ("history", Yojson_of_history.f ~users ~from:`Police history);
                 ]
             in
