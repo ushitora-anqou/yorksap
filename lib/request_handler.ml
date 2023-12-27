@@ -1,3 +1,4 @@
+(*
 let get_api_v1_game ~game_id:_ =
   let open Game_model in
   let split_list n l =
@@ -91,3 +92,4 @@ let get_api_v1_game ~game_id:_ =
       ]
   in
   ()
+  *)

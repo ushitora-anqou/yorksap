@@ -1,5 +1,6 @@
+open Yorksap
+
 module Handler = struct
-  open Yorksap
   open Yume.Server
 
   let respond_yojson ?status ?(headers = []) y =
@@ -122,7 +123,7 @@ module Handler = struct
           `List (phase0 :: phases)
       end
 
-      let get store req =
+      let get ~game_data ~store req =
         let ( let* ) = Result.bind in
         let room_id = Yume.Server.param ":id" req in
         match
@@ -138,7 +139,7 @@ module Handler = struct
                 Ok None
             | _ ->
                 game
-                |> Game_model.Game.of_yojson ~map:Game_data.London.map
+                |> Game_model.Game.of_yojson ~map:game_data.Game_data.map
                 |> Result.map Option.some
           in
           let* users =
@@ -212,61 +213,57 @@ end
 let generate_uuid () = Uuidm.(v `V4 |> to_string)
 
 let server () =
-  let open Yorksap.Yume.Server in
+  let open Yume.Server in
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
-  let store =
-    match Yorksap.Store.connect env ~sw { dsn } with
+  (* Load game data *)
+  let ic = open_in_bin "london.json" in
+  let game_data =
+    Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
+    match Yojson.Safe.from_channel ic |> Game_data.of_yojson with
     | Ok x -> x
     | Error msg -> failwith msg
   in
-  (match store |> Yorksap.Store.create_table_room with
+
+  (* Connect to databse *)
+  let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
+  let store =
+    match Store.connect env ~sw { dsn } with
+    | Ok x -> x
+    | Error msg -> failwith msg
+  in
+  (match store |> Store.create_table_room with
   | Ok () -> ()
   | Error msg -> failwith msg);
-  (match store |> Yorksap.Store.create_table_user with
+  (match store |> Store.create_table_user with
   | Ok () -> ()
   | Error msg -> failwith msg);
 
-  (* For debug *)
+  (* Generate dummy data for debug *)
   (let expect_ok = function Ok () -> () | Error msg -> failwith msg in
    let uuid = generate_uuid () in
    let name = "test game " ^ uuid in
    store
-   |> Yorksap.Store.insert_room ~uuid ~name ~game:(Yojson.Safe.to_string `Null)
+   |> Store.insert_room ~uuid ~name ~game:(Yojson.Safe.to_string `Null)
    |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:0 ~name:"ゆ〜ざ〜０"
-   |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:1 ~name:"ゆ〜ざ〜１"
-   |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:2 ~name:"ゆ〜ざ〜２"
-   |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:3 ~name:"ゆ〜ざ〜３"
-   |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:4 ~name:"ゆ〜ざ〜４"
-   |> expect_ok;
-   store
-   |> Yorksap.Store.insert_user ~room_uuid:uuid ~turn:5 ~name:"ゆ〜ざ〜５"
-   |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:0 ~name:"ゆ〜ざ〜０" |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:1 ~name:"ゆ〜ざ〜１" |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:2 ~name:"ゆ〜ざ〜２" |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:3 ~name:"ゆ〜ざ〜３" |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:4 ~name:"ゆ〜ざ〜４" |> expect_ok;
+   store |> Store.insert_user ~room_uuid:uuid ~turn:5 ~name:"ゆ〜ざ〜５" |> expect_ok;
    let game =
-     let map = Yorksap.Game_data.London.map in
-     let init_locs =
-       [ 138; 50; 53; 198; 155; 100 ]
-       |> List.map (fun id -> Yorksap.Game_model.Loc.make ~id ())
-     in
-     Yorksap.Game_model.Game.(
+     let map = game_data.map in
+     let init_locs = game_data |> Game_data.generate_init_locs 6 in
+     Game_model.Game.(
        make ~init_locs ~map () |> to_yojson |> Yojson.Safe.to_string)
    in
-   (match store |> Yorksap.Store.update_game_by_uuid ~uuid ~game with
+   (match store |> Store.update_game_by_uuid ~uuid ~game with
    | Ok () -> ()
    | Error msg -> failwith msg);
    ());
 
+  (* Start HTTP server *)
   let cors =
     Cors.
       [
@@ -285,7 +282,7 @@ let server () =
             get "/:id" (Room.get store);
           ];
           scope "/game" [
-            get "/:id" (Game.get store);
+            get "/:id" (Game.get ~game_data ~store);
           ];
         ];
       ] [@ocamlformat "disable"]
@@ -296,7 +293,7 @@ let server () =
   start_server env ~sw handler @@ fun () -> ()
 
 let () =
-  Yorksap.Logg.setup ();
+  Logg.setup ();
   Random.self_init ();
 
   let open Cmdliner in

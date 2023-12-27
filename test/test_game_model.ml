@@ -1,7 +1,14 @@
 open Yorksap
 open Game_model
 
-let map = Game_data.London.map
+let game_data =
+  let ic = open_in_bin "../../../london.json" in
+  Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
+  match Yojson.Safe.from_channel ic |> Game_data.of_yojson with
+  | Ok x -> x
+  | Error msg -> failwith msg
+
+let map = game_data.map
 
 let expect_ok = function
   | Ok x -> x
