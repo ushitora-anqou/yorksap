@@ -8,6 +8,7 @@ let respond_error ~status msg =
 
 let to_assoc = Yojson.Safe.Util.to_assoc
 let to_string = Yojson.Safe.Util.to_string
+let to_int = Yojson.Safe.Util.to_int
 let generate_uuid () = Uuidm.(v `V4 |> to_string)
 
 module Api_v1 = struct
@@ -258,10 +259,10 @@ module Api_v1 = struct
       let ( let* ) = Result.bind in
       let room_id = Yume.Server.param ":id" req in
       match
+        let* game = store |> Store.select_game_by_uuid ~uuid:room_id in
         let* game =
-          store
-          |> Store.select_game_by_uuid ~uuid:room_id
-          |> Result.map Yojson.Safe.from_string
+          try Ok (Yojson.Safe.from_string game)
+          with _ -> Error "invalid yojson"
         in
         let* game =
           match game with
@@ -371,6 +372,45 @@ module Api_v1 = struct
               ]
           in
           respond_yojson resp
+
+    let post_move ~game_data ~store req =
+      let ( let* ) = Result.bind in
+      let room_id = Yume.Server.param ":id" req in
+      match
+        let a =
+          req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
+        in
+        let auth = req |> Yume.Server.header_opt `Authorization in
+        ( List.assoc "ticket" a |> to_string,
+          List.assoc "destination" a |> to_int,
+          auth )
+      with
+      | exception _ -> respond_error ~status:`Bad_request "invalid request"
+      | _, _, None -> respond_error ~status:`Unauthorized "invalid request"
+      | _, _, Some auth when not (String.starts_with ~prefix:"Bearer " auth) ->
+          respond_error ~status:`Unauthorized "invalid request"
+      | ticket, destination, Some auth -> (
+          let access_token = String.sub auth 7 (String.length auth - 7) in
+          (* FIXME: fetch user's turn by access_token from store and check if the user actually has the current turn *)
+          let _ = assert false in
+          match
+            (* FIXME: use transaction and lock the table *)
+            let* game =
+              store
+              |> Store.select_game_by_uuid ~uuid:room_id
+              |> Result.map Yojson.Safe.from_string
+            in
+            let* game =
+              game |> Game_model.Game.of_yojson ~map:game_data.Game_data.map
+            in
+            Ok game
+          with
+          | (exception _) | Error _ ->
+              respond_error ~status:`Bad_request "couldn't get a valid game"
+          | Ok game ->
+              let game = Game_model.Game.move_agent in
+              (* FIXME: move game *)
+              respond_yojson (`Assoc []))
   end
 end
 
@@ -472,6 +512,7 @@ let start_http_server env ~sw k =
         ];
         scope "/game" [
           get "/:id" (Game.get ~game_data ~store);
+          post "/:id/move" (Game.post_move store);
         ];
       ];
     ] [@ocamlformat "disable"]
