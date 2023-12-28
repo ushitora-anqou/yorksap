@@ -4,3 +4,4 @@ module Logg = Logg
 module Yume = Yume
 module Store = Store
 module Request_handler = Request_handler
+module Util = Util

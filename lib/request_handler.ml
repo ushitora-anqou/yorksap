@@ -1,3 +1,5 @@
+open Util
+
 let respond_yojson ?status ?(headers = []) y =
   let content_type = (`Content_type, "application/json; charset=utf-8") in
   Yojson.Safe.to_string y
@@ -184,16 +186,6 @@ module Api_v1 = struct
                 ("name", `String (List.nth users i));
                 ("position", `Int (Loc.id loc));
               ]
-
-      let split_list n l =
-        l
-        |> List.fold_left
-             (fun acc x ->
-               if List.length (List.hd acc) < n then
-                 (x :: List.hd acc) :: List.tl acc
-               else List.rev (List.hd acc) :: List.tl acc)
-             [ [] ]
-        |> List.rev
 
       let string_of_ticket = function
         | `Taxi -> "TAXI"
