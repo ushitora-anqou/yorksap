@@ -346,6 +346,28 @@ module Api_v1 = struct
                                ("SECRET", `Int ts.secret);
                                ("DOUBLE", `Int ts.double);
                              ])) );
+                ( "next",
+                  `List
+                    (game |> Game.derive_possible_moves
+                    |> List.map (fun (m : Move.t) ->
+                           let single = function
+                             | `Taxi dst ->
+                                 `List [ `String "TAXI"; `Int (Loc.id dst) ]
+                             | `Bus dst ->
+                                 `List [ `String "BUS"; `Int (Loc.id dst) ]
+                             | `Ug dst ->
+                                 `List
+                                   [ `String "UNDERGROUND"; `Int (Loc.id dst) ]
+                             | `Secret dst ->
+                                 `List [ `String "SECRET"; `Int (Loc.id dst) ]
+                           in
+                           match m with
+                           | #Move.single as m -> single m
+                           | `Double (first, second) ->
+                               `List
+                                 [
+                                   `String "DOUBLE"; single first; single second;
+                                 ])) );
               ]
           in
           respond_yojson resp
