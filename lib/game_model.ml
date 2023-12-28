@@ -347,7 +347,7 @@ module Game : sig
   type t
 
   val make : init_locs:Loc.t list -> map:Map.t -> unit -> t
-  val has_finished : t -> bool
+  val get_game_status : t -> [ `Continuing | `Police_won | `MrX_won ]
   val agents : t -> Agent.t list
   val history : t -> History.t
   val turn : t -> int (* Turn 0 is Mr.X's. Turn 1 through 4 are police's. *)
@@ -542,7 +542,7 @@ end = struct
       in
       Ok t
 
-  let has_finished t =
+  let get_game_status t =
     let time_over = t.clock > 24 in
     let mr_x_arrested =
       (* Check if the current loc of Mr.X is the same as one of the policemen *)
@@ -557,5 +557,7 @@ end = struct
       (* If the current turn is Mr.X's, check if Mr.X can move *)
       t.turn = 0 && derive_possible_moves t = []
     in
-    time_over || mr_x_arrested || mr_x_can't_move
+    if time_over then `MrX_won
+    else if mr_x_arrested || mr_x_can't_move then `Police_won
+    else `Continuing
 end
