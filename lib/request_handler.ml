@@ -80,67 +80,78 @@ module Api_v1 = struct
 
     let register ~game_data ~store req =
       let room_id = Yume.Server.param ":id" req in
-      match
-        let a =
-          req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
-        in
-        ( List.assoc "userName" a |> to_string,
-          List.assoc "userPassword" a |> to_string )
-      with
-      | exception _ -> respond_error ~status:`Bad_request "invalid request"
-      | user_name, user_password -> (
-          let encrypted_user_password =
-            Bcrypt.(hash user_password |> string_of_hash)
-          in
-          match store |> Store.select_users_by_room_uuid ~room_uuid:room_id with
-          | Error msg ->
-              Logs.err (fun m ->
-                  m "couldn't get users by room uuid: %s: %s" room_id msg);
-              respond_error ~status:`Bad_request "couldn't get users"
-          | Ok users when List.length users >= 6 ->
-              Logs.err (fun m ->
-                  m "couldn't register; already full: %s" room_id);
-              respond_error ~status:`Bad_request
-                "couldn't register; already full"
-          | Ok users -> (
-              let turn = List.length users in
-              let access_token = Crypto.SecureRandom.unique_token () in
+      match store |> Store.select_room_by_uuid ~uuid:room_id with
+      | Error _ ->
+          Logs.debug (fun m -> m "Couldn't get room");
+          respond_error ~status:`Bad_request "Couldn't get room"
+      | Ok _ -> (
+          match
+            let a =
+              req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
+            in
+            ( List.assoc "userName" a |> to_string,
+              List.assoc "userPassword" a |> to_string )
+          with
+          | exception _ -> respond_error ~status:`Bad_request "invalid request"
+          | user_name, user_password -> (
+              let encrypted_user_password =
+                Bcrypt.(hash user_password |> string_of_hash)
+              in
               match
-                store
-                |> Store.insert_user ~room_uuid:room_id ~turn ~name:user_name
-                     ~encrypted_password:encrypted_user_password ~access_token
+                store |> Store.select_users_by_room_uuid ~room_uuid:room_id
               with
               | Error msg ->
                   Logs.err (fun m ->
-                      m "couldn't insert user: %s: %s: %s" room_id user_name msg);
-                  respond_error ~status:`Internal_server_error
-                    "couldn't create user"
-              | Ok () ->
-                  (if List.length users = 5 then
-                     (* Game has started *)
-                     let new_game =
-                       let map = game_data.Game_data.map in
-                       let init_locs =
-                         game_data |> Game_data.generate_init_locs 6
-                       in
-                       Game_model.Game.(
-                         make ~init_locs ~map () |> to_yojson
-                         |> Yojson.Safe.to_string)
-                     in
-                     match
-                       store
-                       |> Store.update_game_by_uuid ~uuid:room_id
-                            ~old_game:"null" ~new_game
-                     with
-                     | Ok () -> ()
-                     | Error msg ->
-                         Logs.err (fun m ->
-                             m "couldn't update game: %s: %s" room_id msg));
-                  `Assoc
-                    [
-                      ("accessToken", `String access_token); ("turn", `Int turn);
-                    ]
-                  |> respond_yojson))
+                      m "couldn't get users by room uuid: %s: %s" room_id msg);
+                  respond_error ~status:`Bad_request "couldn't get users"
+              | Ok users when List.length users >= 6 ->
+                  Logs.err (fun m ->
+                      m "couldn't register; already full: %s" room_id);
+                  respond_error ~status:`Bad_request
+                    "couldn't register; already full"
+              | Ok users -> (
+                  let turn = List.length users in
+                  let access_token = Crypto.SecureRandom.unique_token () in
+                  match
+                    store
+                    |> Store.insert_user ~room_uuid:room_id ~turn
+                         ~name:user_name
+                         ~encrypted_password:encrypted_user_password
+                         ~access_token
+                  with
+                  | Error msg ->
+                      Logs.err (fun m ->
+                          m "couldn't insert user: %s: %s: %s" room_id user_name
+                            msg);
+                      respond_error ~status:`Internal_server_error
+                        "couldn't create user"
+                  | Ok () ->
+                      (if List.length users = 5 then
+                         (* Game has started *)
+                         let new_game =
+                           let map = game_data.Game_data.map in
+                           let init_locs =
+                             game_data |> Game_data.generate_init_locs 6
+                           in
+                           Game_model.Game.(
+                             make ~init_locs ~map () |> to_yojson
+                             |> Yojson.Safe.to_string)
+                         in
+                         match
+                           store
+                           |> Store.update_game_by_uuid ~uuid:room_id
+                                ~old_game:"null" ~new_game
+                         with
+                         | Ok () -> ()
+                         | Error msg ->
+                             Logs.err (fun m ->
+                                 m "couldn't update game: %s: %s" room_id msg));
+                      `Assoc
+                        [
+                          ("accessToken", `String access_token);
+                          ("turn", `Int turn);
+                        ]
+                      |> respond_yojson)))
 
     let login store req =
       let room_id = Yume.Server.param ":id" req in
