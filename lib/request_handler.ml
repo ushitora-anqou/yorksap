@@ -367,34 +367,34 @@ module Api_v1 = struct
           in
           respond_yojson resp
 
-    let post_move ~game_data ~store req =
-      let ( let* ) = Result.bind in
+    let parse_move ~ticket ~destination :
+        (Game_model.Move.single, string) result =
+      let loc = Game_model.Loc.make ~id:destination () in
+      match ticket with
+      | "TAXI" -> Ok (`Taxi loc)
+      | "BUS" -> Ok (`Bus loc)
+      | "UNDERGROUND" -> Ok (`Ug loc)
+      | "SECRET" -> Ok (`Secret loc)
+      | _ -> Error "invalid ticket"
+
+    let handle_move ~game_data ~store ~parse_request req =
       let room_id = Yume.Server.param ":id" req in
       match
         let a =
           req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
         in
         let auth = req |> Yume.Server.header_opt `Authorization in
-        ( List.assoc "ticket" a |> to_string,
-          List.assoc "destination" a |> to_int,
-          auth )
+        let move = parse_request a in
+        (move, auth)
       with
       | exception _ -> respond_error ~status:`Bad_request "invalid request"
-      | _, _, None -> respond_error ~status:`Unauthorized "invalid request"
-      | _, _, Some auth when not (String.starts_with ~prefix:"Bearer " auth) ->
+      | _, None -> respond_error ~status:`Unauthorized "invalid request"
+      | _, Some auth when not (String.starts_with ~prefix:"Bearer " auth) ->
           respond_error ~status:`Unauthorized "invalid request"
-      | ticket, destination, Some auth -> (
+      | move, Some auth -> (
           let access_token = String.sub auth 7 (String.length auth - 7) in
           match
-            let* move =
-              let loc = Game_model.Loc.make ~id:destination () in
-              match ticket with
-              | "TAXI" -> Ok (`Taxi loc)
-              | "BUS" -> Ok (`Bus loc)
-              | "UNDERGROUND" -> Ok (`Ug loc)
-              | "SECRET" -> Ok (`Secret loc)
-              | _ -> Error "invalid ticket"
-            in
+            let ( let* ) = Result.bind in
             let* user_turn =
               store |> Store.select_user_by_access_token ~access_token
             in
@@ -436,6 +436,34 @@ module Api_v1 = struct
                       m "failed to update game: %s: %s" room_id msg);
                   respond_error ~status:`Internal_server_error
                     "failed to update game"))
+
+    let post_move ~game_data ~store req =
+      let parse_request a =
+        (parse_move
+           ~ticket:(List.assoc "ticket" a |> to_string)
+           ~destination:(List.assoc "destination" a |> to_int)
+         |> Result.get_ok
+          :> Game_model.Move.t)
+      in
+      handle_move ~game_data ~store ~parse_request req
+
+    let post_double_move ~game_data ~store req =
+      let parse_request a =
+        let first =
+          parse_move
+            ~ticket:(List.assoc "ticket1" a |> to_string)
+            ~destination:(List.assoc "destination1" a |> to_int)
+          |> Result.get_ok
+        in
+        let second =
+          parse_move
+            ~ticket:(List.assoc "ticket2" a |> to_string)
+            ~destination:(List.assoc "destination2" a |> to_int)
+          |> Result.get_ok
+        in
+        `Double (first, second)
+      in
+      handle_move ~game_data ~store ~parse_request req
   end
 end
 
@@ -540,6 +568,7 @@ let start_http_server env ~sw k =
         scope "/game" [
           get "/:id" (Game.get ~game_data ~store);
           post "/:id/move" (Game.post_move ~game_data ~store);
+          post "/:id/double-move" (Game.post_double_move ~game_data ~store);
         ];
       ];
     ] [@ocamlformat "disable"]
