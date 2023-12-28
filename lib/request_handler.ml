@@ -351,7 +351,8 @@ module Api_v1 = struct
                            let fields = [ ("name", `String username) ] in
                            let fields =
                              if
-                               role = `Police
+                               Game.get_game_status game <> `Continuing
+                               || role = `Police
                                || role = `MrX
                                   && (logged_user_turn = Some 0
                                      || turn > 0
@@ -365,7 +366,12 @@ module Api_v1 = struct
                            `Assoc fields)) );
                 ( "history",
                   Yojson_of_history.f ~users
-                    ~from:(if logged_user_turn = Some 0 then `MrX else `Police)
+                    ~from:
+                      (if
+                         logged_user_turn = Some 0
+                         || Game.get_game_status game <> `Continuing
+                       then `MrX
+                       else `Police)
                     history );
                 ( "ticket",
                   `List
