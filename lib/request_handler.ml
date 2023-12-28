@@ -69,7 +69,7 @@ module Api_v1 = struct
           let resp = `Assoc [ ("roomName", `String name) ] in
           respond_yojson resp
 
-    let register store req =
+    let register ~game_data ~store req =
       let room_id = Yume.Server.param ":id" req in
       match
         let a =
@@ -101,7 +101,30 @@ module Api_v1 = struct
                 |> Store.insert_user ~room_uuid:room_id ~turn ~name:user_name
                      ~encrypted_password:encrypted_user_password ~access_token
               with
-              | _ ->
+              | Error msg ->
+                  Logs.err (fun m ->
+                      m "couldn't insert user: %s: %s: %s" room_id user_name msg);
+                  respond_error ~status:`Internal_server_error
+                    "couldn't create user"
+              | Ok () ->
+                  (if List.length users = 5 then
+                     (* Game has started *)
+                     let game =
+                       let map = game_data.Game_data.map in
+                       let init_locs =
+                         game_data |> Game_data.generate_init_locs 6
+                       in
+                       Game_model.Game.(
+                         make ~init_locs ~map () |> to_yojson
+                         |> Yojson.Safe.to_string)
+                     in
+                     match
+                       store |> Store.update_game_by_uuid ~uuid:room_id ~game
+                     with
+                     | Ok () -> ()
+                     | Error msg ->
+                         Logs.err (fun m ->
+                             m "couldn't update game: %s: %s" room_id msg));
                   `Assoc
                     [
                       ("accessToken", `String access_token); ("turn", `Int turn);
@@ -422,7 +445,7 @@ let start_http_server env ~sw k =
           get "" (Room.get_root store);
           post "" (Room.post_root store);
           get "/:id" (Room.get store);
-          post "/:id/register" (Room.register store);
+          post "/:id/register" (Room.register ~store ~game_data);
           post "/:id/login" (Room.login store);
         ];
         scope "/game" [
