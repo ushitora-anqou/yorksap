@@ -310,6 +310,19 @@ module Api_v1 = struct
                            in
                            `Assoc fields)) );
                 ("history", Yojson_of_history.f ~users ~from:`Police history);
+                ( "ticket",
+                  `List
+                    (game |> Game.agents
+                    |> List.map (fun a ->
+                           let ts = Agent.ticket_set a in
+                           `Assoc
+                             [
+                               ("TAXI", `Int ts.taxi);
+                               ("BUS", `Int ts.bus);
+                               ("UNDERGROUND", `Int ts.ug);
+                               ("SECRET", `Int ts.secret);
+                               ("DOUBLE", `Int ts.double);
+                             ])) );
               ]
           in
           respond_yojson resp
