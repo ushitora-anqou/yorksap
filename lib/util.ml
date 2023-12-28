@@ -19,4 +19,6 @@ let split_list n l =
          if List.length (List.hd acc) < n then (x :: List.hd acc) :: List.tl acc
          else [ x ] :: List.rev (List.hd acc) :: List.tl acc)
        [ [] ]
-  |> List.rev
+  |> function
+  | [] -> assert false
+  | x :: xs -> List.rev x :: xs |> List.rev
