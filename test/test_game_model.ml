@@ -270,16 +270,46 @@ let test_game_over_by_timeout_case2 () =
   ()
 
 let test_derive_possible_moves_case1 () =
-  let init_locs = [ Loc.make ~id:1 () ] in
+  let init_locs = [ Loc.make ~id:162 () ] in
   let g = Game.make ~init_locs ~map () in
   let got_moves = Game.derive_possible_moves g in
   let expected_moves =
+    let loc119 = Loc.make ~id:119 () in
+    let loc135 = Loc.make ~id:135 () in
+    let loc136 = Loc.make ~id:136 () in
+    let loc162 = Loc.make ~id:162 () in
+    let loc171 = Loc.make ~id:171 () in
+    let loc174 = Loc.make ~id:174 () in
+    let loc175 = Loc.make ~id:175 () in
     [
-      `Taxi (Loc.make ~id:8 ());
-      `Taxi (Loc.make ~id:9 ());
-      `Bus (Loc.make ~id:46 ());
-      `Bus (Loc.make ~id:58 ());
-      `Ug (Loc.make ~id:46 ());
+      `Double (`Secret loc136, `Secret loc119);
+      `Double (`Secret loc136, `Secret loc135);
+      `Double (`Secret loc136, `Secret loc162);
+      `Double (`Secret loc136, `Taxi loc119);
+      `Double (`Secret loc136, `Taxi loc135);
+      `Double (`Secret loc136, `Taxi loc162);
+      `Double (`Secret loc175, `Secret loc162);
+      `Double (`Secret loc175, `Secret loc171);
+      `Double (`Secret loc175, `Secret loc174);
+      `Double (`Secret loc175, `Taxi loc162);
+      `Double (`Secret loc175, `Taxi loc171);
+      `Double (`Secret loc175, `Taxi loc174);
+      `Double (`Taxi loc136, `Secret loc119);
+      `Double (`Taxi loc136, `Secret loc135);
+      `Double (`Taxi loc136, `Secret loc162);
+      `Double (`Taxi loc136, `Taxi loc119);
+      `Double (`Taxi loc136, `Taxi loc135);
+      `Double (`Taxi loc136, `Taxi loc162);
+      `Double (`Taxi loc175, `Secret loc162);
+      `Double (`Taxi loc175, `Secret loc171);
+      `Double (`Taxi loc175, `Secret loc174);
+      `Double (`Taxi loc175, `Taxi loc162);
+      `Double (`Taxi loc175, `Taxi loc171);
+      `Double (`Taxi loc175, `Taxi loc174);
+      `Secret loc136;
+      `Secret loc175;
+      `Taxi loc136;
+      `Taxi loc175;
     ]
   in
   assert (List.sort compare got_moves = List.sort compare expected_moves);

@@ -128,7 +128,7 @@ module rec Move : sig
   type t_with_hidden =
     [ single_with_hidden | `Double of single_with_hidden * single_with_hidden ]
 
-  val get_dst : Move.t -> Loc.t
+  val get_dst : Move.single -> Loc.t
   val show : t -> string
   val pp : Format.formatter -> t -> unit
   val show_t_with_hidden : t_with_hidden -> string
@@ -151,12 +151,11 @@ end = struct
     [ single_with_hidden | `Double of single_with_hidden * single_with_hidden ]
   [@@deriving show]
 
-  let rec get_dst : Move.t -> Loc.t = function
+  let get_dst : Move.single -> Loc.t = function
     | `Taxi loc -> loc
     | `Bus loc -> loc
     | `Ug loc -> loc
     | `Secret loc -> loc
-    | `Double (_, second) -> get_dst (second :> Move.t)
 end
 
 and Ticket : sig
@@ -276,11 +275,12 @@ end = struct
   let move (move : Move.t) t =
     match move with
     | #Move.single as m -> single_move m t
-    | `Double (first, second) ->
+    | `Double (first, second) when t.ticket_set.double > 0 ->
         let ( let* ) = Result.bind in
         let* t = single_move first t in
         let* t = single_move second t in
         Ok (t |> add_ticket ~value:(-1) `Double)
+    | _ -> Error.no_ticket
 end
 
 module History : sig
@@ -430,7 +430,7 @@ end = struct
   let turn t = t.turn
   let clock t = t.clock
 
-  let move_agent move t =
+  let move_agent (move : Move.t) t =
     let ( let* ) = Result.bind in
 
     (* Make sure no agent exists at the destination *)
@@ -445,10 +445,15 @@ end = struct
           don't care:
             - Mr.X moves to where Mr.X exists (i.turn = 0 && i = 0)
         *)
-        let dst = Move.get_dst move in
+        let dsts =
+          match move with
+          | #Move.single as move -> [ Move.get_dst move ]
+          | `Double (first, second) ->
+              [ Move.get_dst first; Move.get_dst second ]
+        in
         t.agents
         |> Farray.fold_lefti
-             (fun i b agent -> b || (Agent.loc agent = dst && i <> 0))
+             (fun i b agent -> b || (List.mem (Agent.loc agent) dsts && i <> 0))
              false
       then Error.someone_is_already_there
       else Ok ()
@@ -513,7 +518,7 @@ end = struct
           let double_moves =
             single_moves
             |> List.map (fun (move : Move.single) ->
-                   let dst = Move.get_dst (move :> Move.t) in
+                   let dst = Move.get_dst move in
                    enumerate_all_moves (Some move) dst)
             |> List.flatten
           in
