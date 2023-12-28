@@ -13,6 +13,12 @@ let to_string = Yojson.Safe.Util.to_string
 let to_int = Yojson.Safe.Util.to_int
 let generate_uuid () = Uuidm.(v `V4 |> to_string)
 
+let parse_authorization_header req =
+  match req |> Yume.Server.header_opt `Authorization with
+  | None -> None
+  | Some auth when not (String.starts_with ~prefix:"Bearer " auth) -> None
+  | Some auth -> Some (String.sub auth 7 (String.length auth - 7))
+
 module Api_v1 = struct
   module Room = struct
     let get_root store _req =
@@ -252,6 +258,7 @@ module Api_v1 = struct
     let get ~game_data ~store req =
       let ( let* ) = Result.bind in
       let room_id = Yume.Server.param ":id" req in
+      let access_token = parse_authorization_header req in
       match
         let* game = store |> Store.select_game_by_uuid ~uuid:room_id in
         let* game =
@@ -280,12 +287,21 @@ module Api_v1 = struct
           else Error "corrupted user list"
         in
         let users = users |> List.map snd in
-        Ok (game, users)
+        let* logged_user_turn =
+          match access_token with
+          | None -> Ok None
+          | Some access_token ->
+              store
+              |> Store.select_user_by_room_uuid_and_access_token
+                   ~room_uuid:room_id ~access_token
+              |> Result.map Option.some
+        in
+        Ok (game, users, logged_user_turn)
       with
       | Error msg ->
           Logs.debug (fun m -> m "Couldn't get game: %s" msg);
           respond_error ~status:`Bad_request "couldn't get game"
-      | Ok (None, users) ->
+      | Ok (None, users, _) ->
           (* The room exists, but the game hasn't started yet *)
           `Assoc
             [
@@ -298,7 +314,7 @@ module Api_v1 = struct
                          `Assoc [ ("name", `String username) ])) );
             ]
           |> respond_yojson
-      | Ok (Some game, users) ->
+      | Ok (Some game, users, logged_user_turn) ->
           let open Game_model in
           let history = Game.history game in
           let resp =
@@ -311,7 +327,6 @@ module Api_v1 = struct
                   `List
                     (List.combine users (Game.agents game)
                     |> List.map (fun (username, agent) ->
-                           (* FIXME *)
                            let role = Agent.role agent in
                            let clock = Game.clock game in
                            let fields = [ ("name", `String username) ] in
@@ -319,15 +334,19 @@ module Api_v1 = struct
                              if
                                role = `Police
                                || role = `MrX
-                                  && (clock = 3 || clock = 8 || clock = 13
-                                    || clock = 18 || clock = 24)
+                                  && (logged_user_turn = Some 0 || clock = 3
+                                    || clock = 8 || clock = 13 || clock = 18
+                                    || clock = 24)
                              then
                                ("position", `Int (agent |> Agent.loc |> Loc.id))
                                :: fields
                              else fields
                            in
                            `Assoc fields)) );
-                ("history", Yojson_of_history.f ~users ~from:`Police history);
+                ( "history",
+                  Yojson_of_history.f ~users
+                    ~from:(if logged_user_turn = Some 0 then `MrX else `Police)
+                    history );
                 ( "ticket",
                   `List
                     (game |> Game.agents
@@ -342,27 +361,33 @@ module Api_v1 = struct
                                ("DOUBLE", `Int ts.double);
                              ])) );
                 ( "next",
-                  `List
-                    (game |> Game.derive_possible_moves
-                    |> List.map (fun (m : Move.t) ->
-                           let single = function
-                             | `Taxi dst ->
-                                 `List [ `String "TAXI"; `Int (Loc.id dst) ]
-                             | `Bus dst ->
-                                 `List [ `String "BUS"; `Int (Loc.id dst) ]
-                             | `Ug dst ->
+                  if logged_user_turn <> Some (Game.turn game) then `Null
+                  else
+                    `List
+                      (game |> Game.derive_possible_moves
+                      |> List.map (fun (m : Move.t) ->
+                             let single = function
+                               | `Taxi dst ->
+                                   `List [ `String "TAXI"; `Int (Loc.id dst) ]
+                               | `Bus dst ->
+                                   `List [ `String "BUS"; `Int (Loc.id dst) ]
+                               | `Ug dst ->
+                                   `List
+                                     [
+                                       `String "UNDERGROUND"; `Int (Loc.id dst);
+                                     ]
+                               | `Secret dst ->
+                                   `List [ `String "SECRET"; `Int (Loc.id dst) ]
+                             in
+                             match m with
+                             | #Move.single as m -> single m
+                             | `Double (first, second) ->
                                  `List
-                                   [ `String "UNDERGROUND"; `Int (Loc.id dst) ]
-                             | `Secret dst ->
-                                 `List [ `String "SECRET"; `Int (Loc.id dst) ]
-                           in
-                           match m with
-                           | #Move.single as m -> single m
-                           | `Double (first, second) ->
-                               `List
-                                 [
-                                   `String "DOUBLE"; single first; single second;
-                                 ])) );
+                                   [
+                                     `String "DOUBLE";
+                                     single first;
+                                     single second;
+                                   ])) );
               ]
           in
           respond_yojson resp
@@ -396,7 +421,9 @@ module Api_v1 = struct
           match
             let ( let* ) = Result.bind in
             let* user_turn =
-              store |> Store.select_user_by_access_token ~access_token
+              store
+              |> Store.select_user_by_room_uuid_and_access_token
+                   ~room_uuid:room_id ~access_token
             in
             let* game =
               store

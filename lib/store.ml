@@ -94,9 +94,9 @@ CREATE TABLE IF NOT EXISTS user (
     (Caqti_type.string ->* Caqti_type.(t2 int string))
       {|SELECT turn, name FROM user WHERE room_uuid = ? ORDER BY turn ASC|}
 
-  let select_user_by_access_token =
-    (Caqti_type.string ->! Caqti_type.int)
-      {|SELECT turn FROM user WHERE access_token = ?|}
+  let select_user_by_room_uuid_and_access_token =
+    (Caqti_type.(t2 string string) ->! Caqti_type.int)
+      {|SELECT turn FROM user WHERE room_uuid = ? AND access_token = ?|}
 end
 
 let create_table_room t = t |> exec Q.create_table_room ()
@@ -119,8 +119,8 @@ let select_user_by_room_uuid_and_name ~room_uuid ~name t =
 let select_users_by_room_uuid ~room_uuid t =
   t |> collect_list Q.select_users_by_room_uuid room_uuid
 
-let select_user_by_access_token ~access_token t =
-  t |> find Q.select_user_by_access_token access_token
+let select_user_by_room_uuid_and_access_token ~room_uuid ~access_token t =
+  t |> find Q.select_user_by_room_uuid_and_access_token (room_uuid, access_token)
 
 let create_room ~room_name ~user_name ~encrypted_user_password ~room_id
     ~access_token ~game t =
