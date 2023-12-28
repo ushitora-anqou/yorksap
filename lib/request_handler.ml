@@ -341,14 +341,16 @@ module Api_v1 = struct
                     |> List.map (fun (username, agent) ->
                            let role = Agent.role agent in
                            let clock = Game.clock game in
+                           let turn = Game.turn game in
                            let fields = [ ("name", `String username) ] in
                            let fields =
                              if
                                role = `Police
                                || role = `MrX
-                                  && (logged_user_turn = Some 0 || clock = 3
-                                    || clock = 8 || clock = 13 || clock = 18
-                                    || clock = 24)
+                                  && (logged_user_turn = Some 0
+                                     || turn > 0
+                                        && (clock = 3 || clock = 8 || clock = 13
+                                          || clock = 18 || clock = 24))
                              then
                                ("position", `Int (agent |> Agent.loc |> Loc.id))
                                :: fields
