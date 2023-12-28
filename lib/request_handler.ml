@@ -516,61 +516,11 @@ let establish_store env ~sw dsn =
   | Error msg -> failwith msg);
   store
 
-(*
-let generate_dummy_data_for_debug ~store ~game_data =
-  (* Generate dummy data for debug *)
-  (let expect_ok = function Ok () -> () | Error msg -> failwith msg in
-   let uuid = generate_uuid () in
-   let name = "test game " ^ uuid in
-   let encrypted_password = "" in
-   let access_token = "" in
-   store
-   |> Store.insert_room ~uuid ~name ~game:(Yojson.Safe.to_string `Null)
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:0 ~name:"ゆ〜ざ〜０"
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:1 ~name:"ゆ〜ざ〜１"
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:2 ~name:"ゆ〜ざ〜２"
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:3 ~name:"ゆ〜ざ〜３"
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:4 ~name:"ゆ〜ざ〜４"
-   |> expect_ok;
-   store
-   |> Store.insert_user ~encrypted_password ~access_token ~room_uuid:uuid
-        ~turn:5 ~name:"ゆ〜ざ〜５"
-   |> expect_ok;
-   let game =
-     let map = game_data.Game_data.map in
-     let init_locs = game_data |> Game_data.generate_init_locs 6 in
-     Game_model.Game.(
-       make ~init_locs ~map () |> to_yojson |> Yojson.Safe.to_string)
-   in
-   (match store |> Store.update_game_by_uuid ~uuid ~game with
-   | Ok () -> ()
-   | Error msg -> failwith msg);
-   ());
-  ()
-*)
-
 let start_http_server env ~sw k =
   let game_data = load_game_data "london.json" in
 
   let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
   let store = establish_store env ~sw dsn in
-
-  (*generate_dummy_data_for_debug ~store ~game_data;*)
 
   (* Start HTTP server *)
   let open Yume.Server in
