@@ -24,7 +24,7 @@ module Api_v1 = struct
     let get_root store _req =
       match Store.select_rooms store with
       | Error _ ->
-          Logs.debug (fun m -> m "Couldn't select rooms");
+          Logs.err (fun m -> m "Couldn't select rooms");
           respond_error ~status:`Bad_request "Couldn't select rooms"
       | Ok rooms ->
           let roomlist =
@@ -72,7 +72,7 @@ module Api_v1 = struct
       let room_id = Yume.Server.param ":id" req in
       match store |> Store.select_room_by_uuid ~uuid:room_id with
       | Error _ ->
-          Logs.debug (fun m -> m "Couldn't get room");
+          Logs.err (fun m -> m "Couldn't get room");
           respond_error ~status:`Bad_request "Couldn't get room"
       | Ok (_uuid, name) ->
           let resp = `Assoc [ ("roomName", `String name) ] in
@@ -82,7 +82,7 @@ module Api_v1 = struct
       let room_id = Yume.Server.param ":id" req in
       match store |> Store.select_room_by_uuid ~uuid:room_id with
       | Error _ ->
-          Logs.debug (fun m -> m "Couldn't get room");
+          Logs.err (fun m -> m "Couldn't get room");
           respond_error ~status:`Bad_request "Couldn't get room"
       | Ok _ -> (
           match
@@ -310,7 +310,7 @@ module Api_v1 = struct
         Ok (game, users, logged_user_turn)
       with
       | Error msg ->
-          Logs.debug (fun m -> m "Couldn't get game: %s" msg);
+          Logs.err (fun m -> m "Couldn't get game: %s" msg);
           respond_error ~status:`Bad_request "couldn't get game"
       | Ok (None, users, _) ->
           (* The room exists, but the game hasn't started yet *)
