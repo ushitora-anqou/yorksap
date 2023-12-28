@@ -313,7 +313,7 @@ module Api_v1 = struct
             `Assoc
               [
                 ("roomId", `String room_id);
-                ("phase", `Int (Game.turn game));
+                ("phase", `Int (Game.clock game));
                 ("turn", `String (List.nth users (Game.turn game)));
                 ( "nowPosition",
                   `List
