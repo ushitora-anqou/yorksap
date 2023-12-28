@@ -493,19 +493,36 @@ end = struct
     Ok t
 
   let derive_possible_moves t =
+    let rec enumerate_all_moves prev_move loc : Move.t list =
+      let single_moves : Move.single list =
+        t.map |> Map.get_links ~src:loc
+        |> List.map (fun link ->
+               let dst = Link.dst link in
+               match Link.by link with
+               | `Taxi -> [ `Taxi dst; `Secret dst ]
+               | `Bus -> [ `Bus dst; `Secret dst ]
+               | `Ug -> [ `Ug dst; `Secret dst ]
+               | `Boat -> [ `Secret dst ])
+        |> List.flatten
+      in
+      match prev_move with
+      | Some prev_move ->
+          single_moves
+          |> List.map (fun (move : Move.single) -> `Double (prev_move, move))
+      | None ->
+          let double_moves =
+            single_moves
+            |> List.map (fun (move : Move.single) ->
+                   let dst = Move.get_dst (move :> Move.t) in
+                   enumerate_all_moves (Some move) dst)
+            |> List.flatten
+          in
+          (single_moves :> Move.t list) @ double_moves
+    in
+    (* Enumerate all moves from the current loc, then filter out impossible ones *)
     let a = t.agents.Farray.@(t.turn) in
-    t.map
-    |> Map.get_links ~src:(Agent.loc a)
-    |> List.filter_map (fun l ->
-           let dst = Link.dst l in
-           let move =
-             match Link.by l with
-             | `Taxi -> `Taxi dst
-             | `Bus -> `Bus dst
-             | `Ug -> `Ug dst
-             | `Boat -> `Secret dst
-           in
-           match t |> move_agent move with Ok _ -> Some move | Error _ -> None)
+    enumerate_all_moves None (Agent.loc a)
+    |> List.filter (fun move -> t |> move_agent move |> Result.is_ok)
 
   let skip_turn t =
     if derive_possible_moves t <> [] then Error.can't_skip
