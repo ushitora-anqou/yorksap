@@ -110,7 +110,7 @@ module Api_v1 = struct
               | Ok () ->
                   (if List.length users = 5 then
                      (* Game has started *)
-                     let game =
+                     let new_game =
                        let map = game_data.Game_data.map in
                        let init_locs =
                          game_data |> Game_data.generate_init_locs 6
@@ -120,7 +120,9 @@ module Api_v1 = struct
                          |> Yojson.Safe.to_string)
                      in
                      match
-                       store |> Store.update_game_by_uuid ~uuid:room_id ~game
+                       store
+                       |> Store.update_game_by_uuid ~uuid:room_id
+                            ~old_game:"null" ~new_game
                      with
                      | Ok () -> ()
                      | Error msg ->
@@ -391,26 +393,57 @@ module Api_v1 = struct
           respond_error ~status:`Unauthorized "invalid request"
       | ticket, destination, Some auth -> (
           let access_token = String.sub auth 7 (String.length auth - 7) in
-          (* FIXME: fetch user's turn by access_token from store and check if the user actually has the current turn *)
-          let _ = assert false in
           match
-            (* FIXME: use transaction and lock the table *)
+            let* move =
+              let loc = Game_model.Loc.make ~id:destination () in
+              match ticket with
+              | "TAXI" -> Ok (`Taxi loc)
+              | "BUS" -> Ok (`Bus loc)
+              | "UNDERGROUND" -> Ok (`Ug loc)
+              | "SECRET" -> Ok (`Secret loc)
+              | _ -> Error "invalid ticket"
+            in
+            let* user_turn =
+              store |> Store.select_user_by_access_token ~access_token
+            in
             let* game =
               store
               |> Store.select_game_by_uuid ~uuid:room_id
               |> Result.map Yojson.Safe.from_string
             in
-            let* game =
+            let* old_game =
               game |> Game_model.Game.of_yojson ~map:game_data.Game_data.map
             in
-            Ok game
+            let* new_game =
+              old_game
+              |> Game_model.Game.move_agent move
+              |> Result.map_error Game_model.Error.to_string
+            in
+            Ok (old_game, new_game, user_turn)
           with
-          | (exception _) | Error _ ->
+          | Error msg ->
+              Logs.err (fun m -> m "couldn't get a valid game: %s" msg);
               respond_error ~status:`Bad_request "couldn't get a valid game"
-          | Ok game ->
-              let game = Game_model.Game.move_agent in
-              (* FIXME: move game *)
-              respond_yojson (`Assoc []))
+          | Ok (old_game, _, user_turn)
+            when Game_model.Game.turn old_game <> user_turn ->
+              respond_error ~status:`Bad_request "it's not your turn"
+          | Ok (old_game, new_game, _) -> (
+              let old_game =
+                old_game |> Game_model.Game.to_yojson |> Yojson.Safe.to_string
+              in
+              let new_game =
+                new_game |> Game_model.Game.to_yojson |> Yojson.Safe.to_string
+              in
+              match
+                store
+                |> Store.update_game_by_uuid ~uuid:room_id ~old_game ~new_game
+              with
+              | Ok () -> respond_yojson (`Assoc [])
+              | Error msg ->
+                  Logs.err (fun m ->
+                      m "failed to update game: %s: %s" room_id msg);
+                  respond_error ~status:`Internal_server_error
+                    "failed to update game"))
   end
 end
 
@@ -435,6 +468,7 @@ let establish_store env ~sw dsn =
   | Error msg -> failwith msg);
   store
 
+(*
 let generate_dummy_data_for_debug ~store ~game_data =
   (* Generate dummy data for debug *)
   (let expect_ok = function Ok () -> () | Error msg -> failwith msg in
@@ -480,6 +514,7 @@ let generate_dummy_data_for_debug ~store ~game_data =
    | Error msg -> failwith msg);
    ());
   ()
+*)
 
 let start_http_server env ~sw k =
   let game_data = load_game_data "london.json" in
@@ -512,7 +547,7 @@ let start_http_server env ~sw k =
         ];
         scope "/game" [
           get "/:id" (Game.get ~game_data ~store);
-          post "/:id/move" (Game.post_move store);
+          post "/:id/move" (Game.post_move ~game_data ~store);
         ];
       ];
     ] [@ocamlformat "disable"]

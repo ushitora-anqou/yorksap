@@ -79,8 +79,8 @@ CREATE TABLE IF NOT EXISTS user (
       {|SELECT game FROM room WHERE uuid = ?|}
 
   let update_game_by_uuid =
-    (Caqti_type.(t2 string string) ->. Caqti_type.unit)
-      {|UPDATE room SET game = ? WHERE uuid = ?|}
+    (Caqti_type.(t3 string string string) ->. Caqti_type.unit)
+      {|UPDATE room SET game = ? WHERE uuid = ? AND game = ?|}
 
   let insert_user =
     (Caqti_type.(t5 string int string string string) ->. Caqti_type.unit)
@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS user (
   let select_users_by_room_uuid =
     (Caqti_type.string ->* Caqti_type.(t2 int string))
       {|SELECT turn, name FROM user WHERE room_uuid = ? ORDER BY turn ASC|}
+
+  let select_user_by_access_token =
+    (Caqti_type.string ->! Caqti_type.int)
+      {|SELECT turn FROM user WHERE access_token = ?|}
 end
 
 let create_table_room t = t |> exec Q.create_table_room ()
@@ -102,8 +106,8 @@ let select_rooms t = t |> collect_list Q.select_rooms ()
 let select_room_by_uuid ~uuid t = t |> find Q.select_room_by_uuid uuid
 let select_game_by_uuid ~uuid t = t |> find Q.select_game_by_uuid uuid
 
-let update_game_by_uuid ~uuid ~game t =
-  t |> exec Q.update_game_by_uuid (game, uuid)
+let update_game_by_uuid ~uuid ~old_game ~new_game t =
+  t |> exec Q.update_game_by_uuid (new_game, uuid, old_game)
 
 let insert_user ~room_uuid ~turn ~name ~encrypted_password ~access_token t =
   t
@@ -114,6 +118,9 @@ let select_user_by_room_uuid_and_name ~room_uuid ~name t =
 
 let select_users_by_room_uuid ~room_uuid t =
   t |> collect_list Q.select_users_by_room_uuid room_uuid
+
+let select_user_by_access_token ~access_token t =
+  t |> find Q.select_user_by_access_token access_token
 
 let create_room ~room_name ~user_name ~encrypted_user_password ~room_id
     ~access_token ~game t =
