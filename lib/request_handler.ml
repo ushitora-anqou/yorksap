@@ -323,6 +323,7 @@ module Api_v1 = struct
                 ("roomId", `String room_id);
                 ("phase", `Int (Game.clock game));
                 ("turn", `String (List.nth users (Game.turn game)));
+                ("gameOver", `Bool (Game.has_finished game));
                 ( "nowPosition",
                   `List
                     (List.combine users (Game.agents game)
