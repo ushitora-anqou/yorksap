@@ -1,4 +1,6 @@
 open Util
+open Game_map
+open Game_model
 
 let respond_yojson ?status ?(headers = []) y =
   let content_type = (`Content_type, "application/json; charset=utf-8") in
@@ -129,12 +131,8 @@ module Api_v1 = struct
                       (if List.length users = 5 then
                          (* Game has started *)
                          let new_game =
-                           let map = game_data.Game_data.map in
-                           let init_locs =
-                             game_data |> Game_data.generate_init_locs 6
-                           in
-                           Game_model.Game.(
-                             make ~init_locs ~map () |> to_yojson
+                           Game.(
+                             make ~game_data () |> to_yojson
                              |> Yojson.Safe.to_string)
                          in
                          match
@@ -191,8 +189,6 @@ module Api_v1 = struct
 
   module Game = struct
     module Yojson_of_history = struct
-      open Game_model
-
       let yojson_of_init_loc ~users i = function
         | None ->
             (* hidden loc *)
@@ -266,6 +262,113 @@ module Api_v1 = struct
         `List (phase0 :: phases)
     end
 
+    module Yojson_of_game = struct
+      let yojson_of_now_position ~game ~users ~logged_user_turn ~game_data =
+        List.combine users (Game.agents game)
+        |> List.map (fun (username, agent) ->
+               let role = Agent.role agent in
+               let clock = Game.clock game in
+               let turn = Game.turn game in
+               let fields = [ ("name", `String username) ] in
+               let should_position_revealed =
+                 let is_game_finished =
+                   Game.get_game_status game <> `Continuing
+                 in
+                 let is_police = role = `Police in
+                 let is_mr_x = role = `MrX in
+                 let is_logged_user_mr_x = logged_user_turn = Some 0 in
+                 let is_disclosure_time =
+                   Game_data.is_disclosure_clock clock game_data
+                 in
+                 let has_mr_x_turn_finished = turn > 0 in
+                 is_game_finished || is_police
+                 || is_mr_x
+                    && (is_logged_user_mr_x
+                       || (has_mr_x_turn_finished && is_disclosure_time))
+               in
+               let fields =
+                 if should_position_revealed then
+                   ("position", `Int (agent |> Agent.loc |> Loc.id)) :: fields
+                 else fields
+               in
+               `Assoc fields)
+
+      let yojson_of_next ~logged_user_turn ~game =
+        if logged_user_turn <> Some (Game.turn game) then `Null
+        else
+          `List
+            (game |> Game.derive_possible_moves
+            |> List.map (fun (m : Move.t) ->
+                   let single = function
+                     | `Taxi dst -> `List [ `String "TAXI"; `Int (Loc.id dst) ]
+                     | `Bus dst -> `List [ `String "BUS"; `Int (Loc.id dst) ]
+                     | `Ug dst ->
+                         `List [ `String "UNDERGROUND"; `Int (Loc.id dst) ]
+                     | `Secret dst ->
+                         `List [ `String "SECRET"; `Int (Loc.id dst) ]
+                   in
+                   match m with
+                   | #Move.single as m -> single m
+                   | `Double (first, second) ->
+                       `List [ `String "DOUBLE"; single first; single second ])
+            )
+
+      let f ~room_id ~game ~users ~logged_user_turn ~game_data =
+        let history = Game.history game in
+        `Assoc
+          [
+            ("roomId", `String room_id);
+            ("phase", `Int (Game.clock game));
+            ("turn", `String (List.nth users (Game.turn game)));
+            ("gameOver", `Bool (Game.get_game_status game <> `Continuing));
+            ( "gameStatus",
+              `Int
+                (match Game.get_game_status game with
+                | `Continuing -> 0
+                | `MrX_won -> -1
+                | `Police_won -> 1) );
+            ( "nowPosition",
+              `List
+                (yojson_of_now_position ~game ~users ~logged_user_turn
+                   ~game_data) );
+            ( "history",
+              Yojson_of_history.f ~users
+                ~from:
+                  (if
+                     logged_user_turn = Some 0
+                     || Game.get_game_status game <> `Continuing
+                   then `MrX
+                   else `Police)
+                history );
+            ( "ticket",
+              `List
+                (game |> Game.agents
+                |> List.map (fun a ->
+                       let ts = Agent.ticket_set a in
+                       `Assoc
+                         [
+                           ("TAXI", `Int ts.taxi);
+                           ("BUS", `Int ts.bus);
+                           ("UNDERGROUND", `Int ts.ug);
+                           ("SECRET", `Int ts.secret);
+                           ("DOUBLE", `Int ts.double);
+                         ])) );
+            ("next", yojson_of_next ~logged_user_turn ~game);
+          ]
+
+      let g ~users ~room_id =
+        `Assoc
+          [
+            ("roomId", `String room_id);
+            ("phase", `Int (-1));
+            ( "nowPosition",
+              `List
+                (users
+                |> List.map (fun username ->
+                       `Assoc [ ("name", `String username) ])) );
+          ]
+    end
+
     let get ~game_data ~store req =
       let ( let* ) = Result.bind in
       let room_id = Yume.Server.param ":id" req in
@@ -281,10 +384,7 @@ module Api_v1 = struct
           | `Null ->
               (* The room exists, but the game hasn't started yet *)
               Ok None
-          | _ ->
-              game
-              |> Game_model.Game.of_yojson ~map:game_data.Game_data.map
-              |> Result.map Option.some
+          | _ -> game |> Game.of_yojson ~game_data |> Result.map Option.some
         in
         let* users =
           store |> Store.select_users_by_room_uuid ~room_uuid:room_id
@@ -314,113 +414,13 @@ module Api_v1 = struct
           respond_error ~status:`Bad_request "couldn't get game"
       | Ok (None, users, _) ->
           (* The room exists, but the game hasn't started yet *)
-          `Assoc
-            [
-              ("roomId", `String room_id);
-              ("phase", `Int (-1));
-              ( "nowPosition",
-                `List
-                  (users
-                  |> List.map (fun username ->
-                         `Assoc [ ("name", `String username) ])) );
-            ]
-          |> respond_yojson
+          Yojson_of_game.g ~users ~room_id |> respond_yojson
       | Ok (Some game, users, logged_user_turn) ->
-          let open Game_model in
-          let history = Game.history game in
-          let resp =
-            `Assoc
-              [
-                ("roomId", `String room_id);
-                ("phase", `Int (Game.clock game));
-                ("turn", `String (List.nth users (Game.turn game)));
-                ("gameOver", `Bool (Game.get_game_status game <> `Continuing));
-                ( "gameStatus",
-                  `Int
-                    (match Game.get_game_status game with
-                    | `Continuing -> 0
-                    | `MrX_won -> -1
-                    | `Police_won -> 1) );
-                ( "nowPosition",
-                  `List
-                    (List.combine users (Game.agents game)
-                    |> List.map (fun (username, agent) ->
-                           let role = Agent.role agent in
-                           let clock = Game.clock game in
-                           let turn = Game.turn game in
-                           let fields = [ ("name", `String username) ] in
-                           let fields =
-                             if
-                               Game.get_game_status game <> `Continuing
-                               || role = `Police
-                               || role = `MrX
-                                  && (logged_user_turn = Some 0
-                                     || turn > 0
-                                        && (clock = 3 || clock = 8 || clock = 13
-                                          || clock = 18 || clock = 24))
-                             then
-                               ("position", `Int (agent |> Agent.loc |> Loc.id))
-                               :: fields
-                             else fields
-                           in
-                           `Assoc fields)) );
-                ( "history",
-                  Yojson_of_history.f ~users
-                    ~from:
-                      (if
-                         logged_user_turn = Some 0
-                         || Game.get_game_status game <> `Continuing
-                       then `MrX
-                       else `Police)
-                    history );
-                ( "ticket",
-                  `List
-                    (game |> Game.agents
-                    |> List.map (fun a ->
-                           let ts = Agent.ticket_set a in
-                           `Assoc
-                             [
-                               ("TAXI", `Int ts.taxi);
-                               ("BUS", `Int ts.bus);
-                               ("UNDERGROUND", `Int ts.ug);
-                               ("SECRET", `Int ts.secret);
-                               ("DOUBLE", `Int ts.double);
-                             ])) );
-                ( "next",
-                  if logged_user_turn <> Some (Game.turn game) then `Null
-                  else
-                    `List
-                      (game |> Game.derive_possible_moves
-                      |> List.map (fun (m : Move.t) ->
-                             let single = function
-                               | `Taxi dst ->
-                                   `List [ `String "TAXI"; `Int (Loc.id dst) ]
-                               | `Bus dst ->
-                                   `List [ `String "BUS"; `Int (Loc.id dst) ]
-                               | `Ug dst ->
-                                   `List
-                                     [
-                                       `String "UNDERGROUND"; `Int (Loc.id dst);
-                                     ]
-                               | `Secret dst ->
-                                   `List [ `String "SECRET"; `Int (Loc.id dst) ]
-                             in
-                             match m with
-                             | #Move.single as m -> single m
-                             | `Double (first, second) ->
-                                 `List
-                                   [
-                                     `String "DOUBLE";
-                                     single first;
-                                     single second;
-                                   ])) );
-              ]
-          in
-          respond_yojson resp
+          Yojson_of_game.f ~room_id ~game ~users ~logged_user_turn ~game_data
+          |> respond_yojson
 
-    let parse_move ~ticket ~destination :
-        (Game_model.Move.single, string) result =
-      let loc = Game_model.Loc.make ~id:destination () in
+    let parse_move ~ticket ~destination : (Move.single, string) result =
+      let loc = Loc.make ~id:destination () in
       match ticket with
       | "TAXI" -> Ok (`Taxi loc)
       | "BUS" -> Ok (`Bus loc)
@@ -456,28 +456,24 @@ module Api_v1 = struct
               |> Store.select_game_by_uuid ~uuid:room_id
               |> Result.map Yojson.Safe.from_string
             in
-            let* old_game =
-              game |> Game_model.Game.of_yojson ~map:game_data.Game_data.map
-            in
+            let* old_game = game |> Game.of_yojson ~game_data in
             let* new_game =
-              old_game
-              |> Game_model.Game.move_agent move
-              |> Result.map_error Game_model.Error.to_string
+              old_game |> Game.move_agent move
+              |> Result.map_error Error.to_string
             in
             Ok (old_game, new_game, user_turn)
           with
           | Error msg ->
               Logs.err (fun m -> m "couldn't get a valid game: %s" msg);
               respond_error ~status:`Bad_request "couldn't get a valid game"
-          | Ok (old_game, _, user_turn)
-            when Game_model.Game.turn old_game <> user_turn ->
+          | Ok (old_game, _, user_turn) when Game.turn old_game <> user_turn ->
               respond_error ~status:`Bad_request "it's not your turn"
           | Ok (old_game, new_game, _) -> (
               let old_game =
-                old_game |> Game_model.Game.to_yojson |> Yojson.Safe.to_string
+                old_game |> Game.to_yojson |> Yojson.Safe.to_string
               in
               let new_game =
-                new_game |> Game_model.Game.to_yojson |> Yojson.Safe.to_string
+                new_game |> Game.to_yojson |> Yojson.Safe.to_string
               in
               match
                 store
@@ -496,7 +492,7 @@ module Api_v1 = struct
            ~ticket:(List.assoc "ticket" a |> to_string)
            ~destination:(List.assoc "destination" a |> to_int)
          |> Result.get_ok
-          :> Game_model.Move.t)
+          :> Move.t)
       in
       handle_move ~game_data ~store ~parse_request req
 

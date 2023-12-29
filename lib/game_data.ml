@@ -1,10 +1,11 @@
-open Game_model
+open Game_map
 
 type t = {
   map : Map.t;
   init_loc_candidates : Loc.t list;
   disclosure_clocks : int list;
 }
+[@@deriving show]
 
 module Option = struct
   include Option
@@ -68,11 +69,11 @@ let of_yojson j =
       let* map = map in
       let* map =
         Map.add_link (Link.make ~src ~dst ~by ()) map
-        |> Result.map_error Error.to_string
+        |> Result.map_error Game_error.to_string
       in
       let* map =
         Map.add_link (Link.make ~src:dst ~dst:src ~by ()) map
-        |> Result.map_error Error.to_string
+        |> Result.map_error Game_error.to_string
       in
       Ok map
     in
@@ -114,3 +115,5 @@ let generate_init_locs n t =
   let ary = Array.of_list t.init_loc_candidates in
   array_shuffle_in_place ary;
   List.init n (fun i -> ary.(i))
+
+let is_disclosure_clock clock t = t.disclosure_clocks |> List.mem clock

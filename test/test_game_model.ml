@@ -1,4 +1,5 @@
 open Yorksap
+open Game_map
 open Game_model
 
 let game_data =
@@ -22,7 +23,7 @@ let test_game () =
     [ 138; 50; 53; 198; 155 ] |> List.map (fun id -> Loc.make ~id ())
   in
   let init_locs = init_mr_x_loc :: init_police_locs in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
 
   assert (
     map
@@ -76,7 +77,7 @@ let test_invalid_move () =
   let g =
     Game.make
       ~init_locs:[ Loc.make ~id:115 (); Loc.make ~id:1 (); Loc.make ~id:8 () ]
-      ~map ()
+      ~game_data ()
   in
   let g = Game.move_agent (`Taxi (Loc.make ~id:127 ())) g |> expect_ok in
   let res = Game.move_agent (`Taxi (Loc.make ~id:8 ())) g in
@@ -85,18 +86,18 @@ let test_invalid_move () =
 
 let test_game_finished () =
   let g =
-    Game.make ~init_locs:[ Loc.make ~id:9 (); Loc.make ~id:8 () ] ~map ()
+    Game.make ~init_locs:[ Loc.make ~id:9 (); Loc.make ~id:8 () ] ~game_data ()
   in
-  assert (not (Game.has_finished g));
+  assert (Game.get_game_status g = `Continuing);
   let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> expect_ok in
-  assert (not (Game.has_finished g));
+  assert (Game.get_game_status g = `Continuing);
   let g = Game.move_agent (`Taxi (Loc.make ~id:1 ())) g |> expect_ok in
-  assert (Game.has_finished g);
+  assert (Game.get_game_status g = `Police_won);
   ()
 
 let test_use_boat () =
   let init_locs = [ Loc.make ~id:115 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let new_loc = Loc.make ~id:108 () in
   let g = Game.move_agent (`Secret new_loc) g |> expect_ok in
   assert (Game.agents g |> List.hd |> Agent.loc = new_loc);
@@ -111,7 +112,7 @@ let test_open_locs () =
   let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
   let g =
     let ( >>= ) = Result.bind in
-    Game.make ~init_locs ~map ()
+    Game.make ~init_locs ~game_data ()
     |> Result.ok
     >>= Game.move_agent (`Taxi (Loc.make ~id:114 ()))
     >>= Game.move_agent (`Taxi (Loc.make ~id:8 ()))
@@ -131,7 +132,7 @@ let test_open_locs () =
 
 let test_use_double_move () =
   let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let new_loc1 = Loc.make ~id:108 () in
   let new_loc2 = Loc.make ~id:105 () in
   let g =
@@ -164,14 +165,14 @@ let test_yojson_serialization () =
     [ 138; 50; 53; 198; 155 ] |> List.map (fun id -> Loc.make ~id ())
   in
   let init_locs = init_mr_x_loc :: init_police_locs in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let g' =
-    match g |> Game.to_yojson |> Game.of_yojson ~map with
+    match g |> Game.to_yojson |> Game.of_yojson ~game_data with
     | Ok g -> g
     | Error msg -> failwith msg
   in
   assert (Game.history g = Game.history g');
-  assert (Game.has_finished g = Game.has_finished g');
+  assert (Game.get_game_status g = Game.get_game_status g');
   assert (Game.turn g = Game.turn g');
   assert (Game.clock g = Game.clock g');
   assert (List.length (Game.agents g) = List.length (Game.agents g'));
@@ -180,7 +181,7 @@ let test_yojson_serialization () =
 
 let test_giving_tickets_to_mr_x () =
   let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let g = Game.move_agent (`Taxi (Loc.make ~id:114 ())) g |> expect_ok in
   assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 11);
   assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 10);
@@ -191,7 +192,7 @@ let test_giving_tickets_to_mr_x () =
 
 let test_game_over_by_timeout_case1 () =
   let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let moves =
     List.init 22 Fun.id
     |> List.fold_left
@@ -224,15 +225,15 @@ let test_game_over_by_timeout_case1 () =
   let g = g |> Game.move_agent (`Bus (Loc.make ~id:23 ())) |> expect_ok in
   let g = g |> Game.skip_turn |> expect_ok in
   assert (Game.clock g = 24);
-  assert (not (Game.has_finished g));
+  assert (Game.get_game_status g = `Continuing);
   let g = g |> Game.move_agent (`Bus (Loc.make ~id:13 ())) |> expect_ok in
   let g = g |> Game.skip_turn |> expect_ok in
-  assert (Game.has_finished g);
+  assert (Game.get_game_status g = `MrX_won);
   ()
 
 let test_game_over_by_timeout_case2 () =
   let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let moves =
     `Double (`Bus (Loc.make ~id:23 ()), `Bus (Loc.make ~id:13 ()))
     :: `Taxi (Loc.make ~id:105 ())
@@ -266,12 +267,12 @@ let test_game_over_by_timeout_case2 () =
     moves
     |> List.fold_left (fun g move -> Game.move_agent move g |> expect_ok) g
   in
-  assert (Game.has_finished g);
+  assert (Game.get_game_status g = `MrX_won);
   ()
 
 let test_derive_possible_moves_case1 () =
   let init_locs = [ Loc.make ~id:162 () ] in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let got_moves = Game.derive_possible_moves g in
   let expected_moves =
     let loc119 = Loc.make ~id:119 () in
@@ -319,7 +320,7 @@ let test_derive_possible_moves_case2 () =
   let init_locs =
     [ Loc.make ~id:89 (); Loc.make ~id:1 (); Loc.make ~id:8 () ]
   in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let g = g |> Game.move_agent (`Taxi (Loc.make ~id:105 ())) |> expect_ok in
   let got_moves = Game.derive_possible_moves g in
   let expected_moves =
@@ -357,14 +358,14 @@ let test_derive_possible_moves_case3 () =
       Loc.make ~id:86 ();
     ]
   in
-  let g = Game.make ~init_locs ~map () in
+  let g = Game.make ~init_locs ~game_data () in
   let g = g |> Game.move_agent (`Taxi (Loc.make ~id:70 ())) |> expect_ok in
   let g = g |> Game.move_agent (`Taxi (Loc.make ~id:71 ())) |> expect_ok in
   let g = g |> Game.move_agent (`Taxi (Loc.make ~id:54 ())) |> expect_ok in
-  assert (not (Game.has_finished g));
+  assert (Game.get_game_status g = `Continuing);
   let g = g |> Game.move_agent (`Bus (Loc.make ~id:87 ())) |> expect_ok in
   assert (Game.derive_possible_moves g = []);
-  assert (Game.has_finished g);
+  assert (Game.get_game_status g = `Police_won);
   ()
 
 let () =
