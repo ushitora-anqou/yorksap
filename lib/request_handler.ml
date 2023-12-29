@@ -22,9 +22,11 @@ let parse_authorization_header req =
   | Some auth -> Some (String.sub auth 7 (String.length auth - 7))
 
 module Api_v1 = struct
+  type 'a toolbox = { store : 'a Store.t; game_data : Game_data.t }
+
   module Room = struct
-    let get_root store _req =
-      match Store.select_rooms store with
+    let get_root t _req =
+      match Store.select_rooms t.store with
       | Error _ ->
           Logs.err (fun m -> m "Couldn't select rooms");
           respond_error ~status:`Bad_request "Couldn't select rooms"
@@ -36,7 +38,7 @@ module Api_v1 = struct
           in
           `Assoc [ ("roomlist", `List roomlist) ] |> respond_yojson
 
-    let post_root store req =
+    let post_root t req =
       match
         let a =
           req |> Yume.Server.body |> Yojson.Safe.from_string |> to_assoc
@@ -54,7 +56,7 @@ module Api_v1 = struct
           let access_token = Crypto.SecureRandom.unique_token () in
           let game = Yojson.Safe.to_string `Null in
           match
-            store
+            t.store
             |> Store.create_room ~room_name ~user_name ~encrypted_user_password
                  ~room_id ~access_token ~game
           with
@@ -70,9 +72,9 @@ module Api_v1 = struct
                 ]
               |> respond_yojson)
 
-    let get store req =
+    let get t req =
       let room_id = Yume.Server.param ":id" req in
-      match store |> Store.select_room_by_uuid ~uuid:room_id with
+      match t.store |> Store.select_room_by_uuid ~uuid:room_id with
       | Error _ ->
           Logs.err (fun m -> m "Couldn't get room");
           respond_error ~status:`Bad_request "Couldn't get room"
@@ -80,9 +82,9 @@ module Api_v1 = struct
           let resp = `Assoc [ ("roomName", `String name) ] in
           respond_yojson resp
 
-    let register ~game_data ~store req =
+    let register t req =
       let room_id = Yume.Server.param ":id" req in
-      match store |> Store.select_room_by_uuid ~uuid:room_id with
+      match t.store |> Store.select_room_by_uuid ~uuid:room_id with
       | Error _ ->
           Logs.err (fun m -> m "Couldn't get room");
           respond_error ~status:`Bad_request "Couldn't get room"
@@ -100,7 +102,7 @@ module Api_v1 = struct
                 Bcrypt.(hash user_password |> string_of_hash)
               in
               match
-                store |> Store.select_users_by_room_uuid ~room_uuid:room_id
+                t.store |> Store.select_users_by_room_uuid ~room_uuid:room_id
               with
               | Error msg ->
                   Logs.err (fun m ->
@@ -115,7 +117,7 @@ module Api_v1 = struct
                   let turn = List.length users in
                   let access_token = Crypto.SecureRandom.unique_token () in
                   match
-                    store
+                    t.store
                     |> Store.insert_user ~room_uuid:room_id ~turn
                          ~name:user_name
                          ~encrypted_password:encrypted_user_password
@@ -132,11 +134,11 @@ module Api_v1 = struct
                          (* Game has started *)
                          let new_game =
                            Game.(
-                             make ~game_data () |> to_yojson
-                             |> Yojson.Safe.to_string)
+                             make ~game_data:t.game_data ()
+                             |> to_yojson |> Yojson.Safe.to_string)
                          in
                          match
-                           store
+                           t.store
                            |> Store.update_game_by_uuid ~uuid:room_id
                                 ~old_game:"null" ~new_game
                          with
@@ -151,7 +153,7 @@ module Api_v1 = struct
                         ]
                       |> respond_yojson)))
 
-    let login store req =
+    let login t req =
       let room_id = Yume.Server.param ":id" req in
       match
         let a =
@@ -163,7 +165,7 @@ module Api_v1 = struct
       | exception _ -> respond_error ~status:`Bad_request "invalid request"
       | user_name, user_password -> (
           match
-            store
+            t.store
             |> Store.select_user_by_room_uuid_and_name ~room_uuid:room_id
                  ~name:user_name
           with
@@ -369,12 +371,12 @@ module Api_v1 = struct
           ]
     end
 
-    let get ~game_data ~store req =
+    let get t req =
       let ( let* ) = Result.bind in
       let room_id = Yume.Server.param ":id" req in
       let access_token = parse_authorization_header req in
       match
-        let* game = store |> Store.select_game_by_uuid ~uuid:room_id in
+        let* game = t.store |> Store.select_game_by_uuid ~uuid:room_id in
         let* game =
           try Ok (Yojson.Safe.from_string game)
           with _ -> Error "invalid yojson"
@@ -384,10 +386,13 @@ module Api_v1 = struct
           | `Null ->
               (* The room exists, but the game hasn't started yet *)
               Ok None
-          | _ -> game |> Game.of_yojson ~game_data |> Result.map Option.some
+          | _ ->
+              game
+              |> Game.of_yojson ~game_data:t.game_data
+              |> Result.map Option.some
         in
         let* users =
-          store |> Store.select_users_by_room_uuid ~room_uuid:room_id
+          t.store |> Store.select_users_by_room_uuid ~room_uuid:room_id
         in
         let* () =
           if
@@ -402,7 +407,7 @@ module Api_v1 = struct
           match access_token with
           | None -> Ok None
           | Some access_token ->
-              store
+              t.store
               |> Store.select_user_by_room_uuid_and_access_token
                    ~room_uuid:room_id ~access_token
               |> Result.map Option.some
@@ -416,7 +421,8 @@ module Api_v1 = struct
           (* The room exists, but the game hasn't started yet *)
           Yojson_of_game.g ~users ~room_id |> respond_yojson
       | Ok (Some game, users, logged_user_turn) ->
-          Yojson_of_game.f ~room_id ~game ~users ~logged_user_turn ~game_data
+          Yojson_of_game.f ~room_id ~game ~users ~logged_user_turn
+            ~game_data:t.game_data
           |> respond_yojson
 
     let parse_move ~ticket ~destination : (Move.single, string) result =
@@ -428,7 +434,7 @@ module Api_v1 = struct
       | "SECRET" -> Ok (`Secret loc)
       | _ -> Error "invalid ticket"
 
-    let handle_move ~game_data ~store ~parse_request req =
+    let handle_move t ~parse_request req =
       let room_id = Yume.Server.param ":id" req in
       match
         let a =
@@ -447,16 +453,16 @@ module Api_v1 = struct
           match
             let ( let* ) = Result.bind in
             let* user_turn =
-              store
+              t.store
               |> Store.select_user_by_room_uuid_and_access_token
                    ~room_uuid:room_id ~access_token
             in
             let* game =
-              store
+              t.store
               |> Store.select_game_by_uuid ~uuid:room_id
               |> Result.map Yojson.Safe.from_string
             in
-            let* old_game = game |> Game.of_yojson ~game_data in
+            let* old_game = game |> Game.of_yojson ~game_data:t.game_data in
             let* new_game =
               old_game |> Game.move_agent move
               |> Result.map_error Error.to_string
@@ -476,7 +482,7 @@ module Api_v1 = struct
                 new_game |> Game.to_yojson |> Yojson.Safe.to_string
               in
               match
-                store
+                t.store
                 |> Store.update_game_by_uuid ~uuid:room_id ~old_game ~new_game
               with
               | Ok () -> respond_yojson (`Assoc [])
@@ -486,7 +492,7 @@ module Api_v1 = struct
                   respond_error ~status:`Internal_server_error
                     "failed to update game"))
 
-    let post_move ~game_data ~store req =
+    let post_move t req =
       let parse_request a =
         (parse_move
            ~ticket:(List.assoc "ticket" a |> to_string)
@@ -494,9 +500,9 @@ module Api_v1 = struct
          |> Result.get_ok
           :> Move.t)
       in
-      handle_move ~game_data ~store ~parse_request req
+      handle_move t ~parse_request req
 
-    let post_double_move ~game_data ~store req =
+    let post_double_move t req =
       let parse_request a =
         let first =
           parse_move
@@ -512,7 +518,7 @@ module Api_v1 = struct
         in
         `Double (first, second)
       in
-      handle_move ~game_data ~store ~parse_request req
+      handle_move t ~parse_request req
   end
 end
 
@@ -554,20 +560,21 @@ let start_http_server env ~sw k =
       ]
   in
   let routes =
+    let t = Api_v1.{ store; game_data } in
     let open Router in
     [
       scope "/api/v1" Api_v1.[
         scope "/room" [
-          get "" (Room.get_root store);
-          post "" (Room.post_root store);
-          get "/:id" (Room.get store);
-          post "/:id/register" (Room.register ~store ~game_data);
-          post "/:id/login" (Room.login store);
+          get "" (Room.get_root t);
+          post "" (Room.post_root t);
+          get "/:id" (Room.get t);
+          post "/:id/register" (Room.register t);
+          post "/:id/login" (Room.login t);
         ];
         scope "/game" [
-          get "/:id" (Game.get ~game_data ~store);
-          post "/:id/move" (Game.post_move ~game_data ~store);
-          post "/:id/double-move" (Game.post_double_move ~game_data ~store);
+          get "/:id" (Game.get t);
+          post "/:id/move" (Game.post_move t);
+          post "/:id/double-move" (Game.post_double_move t);
         ];
       ];
     ] [@ocamlformat "disable"]
