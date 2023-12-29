@@ -55,3 +55,10 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/username/reponame.git"
+pin-depends:[
+  [ "caqti.2.1.0" "git+https://github.com/paurkedal/ocaml-caqti.git#6a475abf95565b4ad252d210e10b52aec1bffa97" ]
+  [ "caqti-driver-sqlite3.2.1.0" "git+https://github.com/paurkedal/ocaml-caqti.git#6a475abf95565b4ad252d210e10b52aec1bffa97" ]
+  [ "caqti-eio.2.1.0" "git+https://github.com/paurkedal/ocaml-caqti.git#6a475abf95565b4ad252d210e10b52aec1bffa97" ]
+  [ "cohttp.6.0.0~alpha2" "git+https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1" ]
+  [ "cohttp-eio.6.0.0~alpha2" "git+https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1" ]
+]
