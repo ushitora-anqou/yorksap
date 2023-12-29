@@ -15,7 +15,7 @@ end = struct
   type t = { taxi : int; bus : int; ug : int; secret : int; double : int }
   [@@deriving show, yojson]
 
-  let default_for_mr_x = { taxi = 12; bus = 8; ug = 4; secret = 5; double = 2 }
+  let default_for_mr_x = { taxi = 4; bus = 3; ug = 3; secret = 5; double = 2 }
 
   let default_for_police =
     { taxi = 10; bus = 8; ug = 4; secret = 0; double = 0 }

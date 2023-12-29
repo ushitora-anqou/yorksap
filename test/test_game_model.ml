@@ -53,7 +53,7 @@ let test_game () =
 
   let ts = Game.agents g |> List.hd |> Agent.ticket_set in
   assert (
-    ts.taxi = 12 && ts.bus = 8 && ts.ug = 4 && ts.secret = 5 && ts.double = 2);
+    ts.taxi = 4 && ts.bus = 3 && ts.ug = 3 && ts.secret = 5 && ts.double = 2);
   Game.agents g |> List.tl
   |> List.iter (fun a ->
          let ts = Agent.ticket_set a in
@@ -66,7 +66,7 @@ let test_game () =
   assert (Game.turn g = 1);
   assert (Game.clock g = 1);
   assert (Game.agents g |> List.hd |> Agent.loc = new_mr_x_loc);
-  assert ((Game.agents g |> List.hd |> Agent.ticket_set).taxi = 11);
+  assert ((Game.agents g |> List.hd |> Agent.ticket_set).taxi = 3);
   assert (
     Game.history g
     |> History.get_view ~from:`MrX
@@ -142,7 +142,7 @@ let test_use_double_move () =
   assert (Game.clock g = 2);
   assert (Game.agents g |> List.hd |> Agent.loc = new_loc2);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).secret = 4);
-  assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 7);
+  assert ((Game.agents g |> List.hd |> Agent.ticket_set).bus = 2);
   assert ((Game.agents g |> List.hd |> Agent.ticket_set).double = 1);
   assert (
     Game.history g
@@ -183,10 +183,10 @@ let test_giving_tickets_to_mr_x () =
   let init_locs = [ Loc.make ~id:115 (); Loc.make ~id:1 () ] in
   let g = Game.make ~init_locs ~game_data () in
   let g = Game.move_agent (`Taxi (Loc.make ~id:114 ())) g |> expect_ok in
-  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 11);
+  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 3);
   assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 10);
   let g = Game.move_agent (`Taxi (Loc.make ~id:8 ())) g |> expect_ok in
-  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 12);
+  assert ((List.nth (Game.agents g) 0 |> Agent.ticket_set).taxi = 4);
   assert ((List.nth (Game.agents g) 1 |> Agent.ticket_set).taxi = 9);
   ()
 
@@ -198,7 +198,7 @@ let test_game_over_by_timeout_case1 () =
     |> List.fold_left
          (fun acc i ->
            let mr_x =
-             if i < 22 then
+             if i < 14 then
                if i mod 2 = 0 then `Taxi (Loc.make ~id:23 ())
                else `Taxi (Loc.make ~id:13 ())
              else if i mod 2 = 0 then `Bus (Loc.make ~id:23 ())
@@ -235,15 +235,15 @@ let test_game_over_by_timeout_case2 () =
   let init_locs = [ Loc.make ~id:13 (); Loc.make ~id:89 () ] in
   let g = Game.make ~init_locs ~game_data () in
   let moves =
-    `Double (`Bus (Loc.make ~id:23 ()), `Bus (Loc.make ~id:13 ()))
+    `Double (`Bus (Loc.make ~id:23 ()), `Taxi (Loc.make ~id:13 ()))
     :: `Taxi (Loc.make ~id:105 ())
-    :: `Double (`Bus (Loc.make ~id:23 ()), `Bus (Loc.make ~id:13 ()))
+    :: `Double (`Bus (Loc.make ~id:23 ()), `Taxi (Loc.make ~id:13 ()))
     :: `Taxi (Loc.make ~id:89 ())
     :: (List.init 20 Fun.id
        |> List.fold_left
             (fun acc i ->
               let mr_x =
-                if i < 22 then
+                if i < 12 then
                   if i mod 2 = 0 then `Taxi (Loc.make ~id:23 ())
                   else `Taxi (Loc.make ~id:13 ())
                 else if i mod 2 = 0 then `Bus (Loc.make ~id:23 ())
