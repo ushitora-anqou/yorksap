@@ -24,7 +24,7 @@ echo "SQLITE3_DB_FILE_PATH: $SQLITE3_DB_FILE_PATH"
 echo "SERVER_URI:           $SERVER_URI"
 
 # Launch the server with a fresh sqlite3 db file
-OCAMLRUNPARAM=b DSN="sqlite3://$SQLITE3_DB_FILE_PATH" RANDOM_INIT=0 dune exec bin/main.exe server &
+OCAMLRUNPARAM=b DSN="sqlite3://$SQLITE3_DB_FILE_PATH" RANDOM_INIT=0 opam exec -- dune exec bin/main.exe server &
 sleep 5 # Wait the server to be ready
 
 get_user_name(){
