@@ -1,39 +1,17 @@
-type config = { dsn : string }
-type 'a t = { pool : (Caqti_eio.connection, Caqti_error.t) Caqti_eio.Pool.t }
-
-let stringify_error x = x |> Result.map_error Caqti_error.show
-
-let connect env ~sw { dsn } =
-  let ( let* ) = Result.bind in
-  let* pool =
-    Uri.of_string dsn
-    |> Caqti_eio_unix.connect_pool ~sw ~stdenv:(env :> Caqti_eio.stdenv)
-    |> stringify_error
-  in
-  Ok { pool }
-
-let use f t = t.pool |> Caqti_eio.Pool.use f |> stringify_error
-
-let find query arg t =
-  t
-  |> use (fun c ->
-         let (module Db : Caqti_eio.CONNECTION) = c in
-         Db.find query arg)
-
-let exec query arg t =
-  t
-  |> use (fun c ->
-         let (module Db : Caqti_eio.CONNECTION) = c in
-         Db.exec query arg)
-
-let collect_list query arg t =
-  t
-  |> use (fun c ->
-         let (module Db : Caqti_eio.CONNECTION) = c in
-         Db.collect_list query arg)
-
 module Q = struct
   open Caqti_request.Infix
+
+  let pragma_journal_mode_wal =
+    (Caqti_type.unit ->! Caqti_type.string) {|pragma journal_mode = WAL|}
+
+  let pragma_synchronous_commit =
+    (Caqti_type.unit ->. Caqti_type.unit) {|pragma synchronous = normal|}
+
+  let pragma_temp_store_memory =
+    (Caqti_type.unit ->. Caqti_type.unit) {|pragma temp_store = memory|}
+
+  let pragma_mmap_size =
+    (Caqti_type.unit ->! Caqti_type.int) {|pragma mmap_size = 30000000000|}
 
   let create_table_room =
     (Caqti_type.unit ->. Caqti_type.unit)
@@ -98,6 +76,51 @@ CREATE TABLE IF NOT EXISTS user (
     (Caqti_type.(t2 string string) ->! Caqti_type.int)
       {|SELECT turn FROM user WHERE room_uuid = ? AND access_token = ?|}
 end
+
+type config = { dsn : string }
+type 'a t = { pool : (Caqti_eio.connection, Caqti_error.t) Caqti_eio.Pool.t }
+
+let stringify_error x = x |> Result.map_error Caqti_error.show
+
+let connect env ~sw { dsn } =
+  assert (String.starts_with ~prefix:"sqlite3" dsn);
+  let ( let* ) = Result.bind in
+  let post_connect (c : Caqti_eio.connection) =
+    let (module Db : Caqti_eio.CONNECTION) = c in
+    let* _ = Db.find Q.pragma_journal_mode_wal () in
+    let* _ = Db.exec Q.pragma_synchronous_commit () in
+    let* _ = Db.exec Q.pragma_temp_store_memory () in
+    let* _ = Db.find Q.pragma_mmap_size () in
+    Ok ()
+  in
+  let* pool =
+    Uri.of_string dsn
+    |> Caqti_eio_unix.connect_pool ~sw
+         ~stdenv:(env :> Caqti_eio.stdenv)
+         ~post_connect
+    |> stringify_error
+  in
+  Ok { pool }
+
+let use f t = t.pool |> Caqti_eio.Pool.use f |> stringify_error
+
+let find query arg t =
+  t
+  |> use (fun c ->
+         let (module Db : Caqti_eio.CONNECTION) = c in
+         Db.find query arg)
+
+let exec query arg t =
+  t
+  |> use (fun c ->
+         let (module Db : Caqti_eio.CONNECTION) = c in
+         Db.exec query arg)
+
+let collect_list query arg t =
+  t
+  |> use (fun c ->
+         let (module Db : Caqti_eio.CONNECTION) = c in
+         Db.collect_list query arg)
 
 let create_table_room t = t |> exec Q.create_table_room ()
 let create_table_user t = t |> exec Q.create_table_user ()
