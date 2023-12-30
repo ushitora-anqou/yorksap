@@ -137,17 +137,46 @@ JSON=$(get_game $ROOM_ID)
 [ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
 [ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
 [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
 
-# double move
-double_move $ROOM_ID $ACCESS_TOKEN1
+# single moves (2:00 a.m.)
+single_move $ROOM_ID $ACCESS_TOKEN1
+single_move $ROOM_ID $ACCESS_TOKEN2
+single_move $ROOM_ID $ACCESS_TOKEN3
+single_move $ROOM_ID $ACCESS_TOKEN4
+single_move $ROOM_ID $ACCESS_TOKEN5
+single_move $ROOM_ID $ACCESS_TOKEN6
+
+# Check game is valid
+JSON=$(get_game $ROOM_ID)
+[ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
+[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
+[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
+
+# single moves (3:00 a.m.)
+single_move $ROOM_ID $ACCESS_TOKEN1
 
 # Check game is valid
 JSON=$(get_game $ROOM_ID)
 [ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
 [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
-[ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
 [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "95" ] || failwith "invalid position"
+
+# single moves (3:00 a.m.)
+single_move $ROOM_ID $ACCESS_TOKEN2
+single_move $ROOM_ID $ACCESS_TOKEN3
+single_move $ROOM_ID $ACCESS_TOKEN4
+single_move $ROOM_ID $ACCESS_TOKEN5
+single_move $ROOM_ID $ACCESS_TOKEN6
+
+# double move (4:00 a.m.)
+double_move $ROOM_ID $ACCESS_TOKEN1
+
+# Check game is valid
+JSON=$(get_game $ROOM_ID)
+[ $(echo "$JSON" | jq -r '.phase') = "5" ] || failwith "invalid phase"
+[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
 
 kill %1
 trap - SIGINT SIGTERM EXIT
