@@ -28,4 +28,5 @@ setup.log
 # Local OPAM switch
 _opam/
 Makefile
-yorksap.sqlite3
+yorksap.sqlite3*
+e2e-test-*
