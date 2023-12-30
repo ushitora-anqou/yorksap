@@ -18,6 +18,7 @@ jobs:
           # - windows-latest
         ocaml-compiler:
           - "5.0"
+        test-id: [1]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout tree
@@ -27,7 +28,7 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
       - run: opam install . --deps-only --with-test
-      - run: ./e2e_test.sh
+      - run: ./e2e_test.sh test_case_${{ matrix.test-id }}
 
   test-by-dune-runtest:
     strategy:

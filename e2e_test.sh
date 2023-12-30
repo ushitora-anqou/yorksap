@@ -66,117 +66,125 @@ get_game(){
   curl "http://localhost:8080/api/v1/game/$ROOM_ID"
 }
 
-# Create a room
-JSON=$(create_room)
-ROOM_ID=$(echo $JSON | jq -r '.roomId')
-ACCESS_TOKEN1=$(echo $JSON | jq -r '.accessToken')
+test_case_1(){
+  # Create a room
+  JSON=$(create_room)
+  ROOM_ID=$(echo $JSON | jq -r '.roomId')
+  ACCESS_TOKEN1=$(echo $JSON | jq -r '.accessToken')
 
-# Register users
-ACCESS_TOKEN2=$(register_user 2 $ROOM_ID)
-ACCESS_TOKEN3=$(register_user 3 $ROOM_ID)
-ACCESS_TOKEN4=$(register_user 4 $ROOM_ID)
-ACCESS_TOKEN5=$(register_user 5 $ROOM_ID)
-ACCESS_TOKEN6=$(register_user 6 $ROOM_ID)
+  # Register users
+  ACCESS_TOKEN2=$(register_user 2 $ROOM_ID)
+  ACCESS_TOKEN3=$(register_user 3 $ROOM_ID)
+  ACCESS_TOKEN4=$(register_user 4 $ROOM_ID)
+  ACCESS_TOKEN5=$(register_user 5 $ROOM_ID)
+  ACCESS_TOKEN6=$(register_user 6 $ROOM_ID)
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "1" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
-[ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
-[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.history[0].phase') = "0" ] || failwith "invalid history phase"
-[ $(echo "$JSON" | jq -r '.history[0].player[0].position') = "null" ] || failwith "invalid history player position"
-[ $(echo "$JSON" | jq -r '.ticket[0].TAXI') = "4" ] || failwith "invalid taxi ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].BUS') = "3" ] || failwith "invalid bus ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].UNDERGROUND') = "3" ] || failwith "invalid ug ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].SECRET') = "5" ] || failwith "invalid secret ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].DOUBLE') = "2" ] || failwith "invalid double ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].TAXI') = "10" ] || failwith "invalid taxi ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].BUS') = "8" ] || failwith "invalid bus ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].UNDERGROUND') = "4" ] || failwith "invalid ug ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].SECRET') = "0" ] || failwith "invalid secret ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].DOUBLE') = "0" ] || failwith "invalid double ticket"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "1" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
+  [ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
+  [ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
+  [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.history[0].phase') = "0" ] || failwith "invalid history phase"
+  [ $(echo "$JSON" | jq -r '.history[0].player[0].position') = "null" ] || failwith "invalid history player position"
+  [ $(echo "$JSON" | jq -r '.ticket[0].TAXI') = "4" ] || failwith "invalid taxi ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].BUS') = "3" ] || failwith "invalid bus ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].UNDERGROUND') = "3" ] || failwith "invalid ug ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].SECRET') = "5" ] || failwith "invalid secret ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].DOUBLE') = "2" ] || failwith "invalid double ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].TAXI') = "10" ] || failwith "invalid taxi ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].BUS') = "8" ] || failwith "invalid bus ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].UNDERGROUND') = "4" ] || failwith "invalid ug ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].SECRET') = "0" ] || failwith "invalid secret ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].DOUBLE') = "0" ] || failwith "invalid double ticket"
 
-# single move
-single_move $ROOM_ID $ACCESS_TOKEN1
+  # single move
+  single_move $ROOM_ID $ACCESS_TOKEN1
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "1" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
-[ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
-[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.history[1].phase') = "1" ] || failwith "invalid history phase"
-[ $(echo "$JSON" | jq -r '.history[1].player[0].position') = "null" ] || failwith "invalid history player position"
-[ $(echo "$JSON" | jq -r '.ticket[0].TAXI') = "3" ] || failwith "invalid taxi ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].BUS') = "3" ] || failwith "invalid bus ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].UNDERGROUND') = "3" ] || failwith "invalid ug ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].SECRET') = "5" ] || failwith "invalid secret ticket"
-[ $(echo "$JSON" | jq -r '.ticket[0].DOUBLE') = "2" ] || failwith "invalid double ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].TAXI') = "10" ] || failwith "invalid taxi ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].BUS') = "8" ] || failwith "invalid bus ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].UNDERGROUND') = "4" ] || failwith "invalid ug ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].SECRET') = "0" ] || failwith "invalid secret ticket"
-[ $(echo "$JSON" | jq -r '.ticket[1].DOUBLE') = "0" ] || failwith "invalid double ticket"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "1" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
+  [ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
+  [ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
+  [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.history[1].phase') = "1" ] || failwith "invalid history phase"
+  [ $(echo "$JSON" | jq -r '.history[1].player[0].position') = "null" ] || failwith "invalid history player position"
+  [ $(echo "$JSON" | jq -r '.ticket[0].TAXI') = "3" ] || failwith "invalid taxi ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].BUS') = "3" ] || failwith "invalid bus ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].UNDERGROUND') = "3" ] || failwith "invalid ug ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].SECRET') = "5" ] || failwith "invalid secret ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[0].DOUBLE') = "2" ] || failwith "invalid double ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].TAXI') = "10" ] || failwith "invalid taxi ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].BUS') = "8" ] || failwith "invalid bus ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].UNDERGROUND') = "4" ] || failwith "invalid ug ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].SECRET') = "0" ] || failwith "invalid secret ticket"
+  [ $(echo "$JSON" | jq -r '.ticket[1].DOUBLE') = "0" ] || failwith "invalid double ticket"
 
-# single moves to next turn
-single_move $ROOM_ID $ACCESS_TOKEN2
-single_move $ROOM_ID $ACCESS_TOKEN3
-single_move $ROOM_ID $ACCESS_TOKEN4
-single_move $ROOM_ID $ACCESS_TOKEN5
-single_move $ROOM_ID $ACCESS_TOKEN6
+  # single moves to next turn
+  single_move $ROOM_ID $ACCESS_TOKEN2
+  single_move $ROOM_ID $ACCESS_TOKEN3
+  single_move $ROOM_ID $ACCESS_TOKEN4
+  single_move $ROOM_ID $ACCESS_TOKEN5
+  single_move $ROOM_ID $ACCESS_TOKEN6
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "2" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
-[ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
-[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "2" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
+  [ $(echo "$JSON" | jq -r '.gameOver') = "false" ] || failwith "invalid gameOver"
+  [ $(echo "$JSON" | jq -r '.gameStatus') = "0" ] || failwith "invalid gameStatus"
+  [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
 
-# single moves (2:00 a.m.)
-single_move $ROOM_ID $ACCESS_TOKEN1
-single_move $ROOM_ID $ACCESS_TOKEN2
-single_move $ROOM_ID $ACCESS_TOKEN3
-single_move $ROOM_ID $ACCESS_TOKEN4
-single_move $ROOM_ID $ACCESS_TOKEN5
-single_move $ROOM_ID $ACCESS_TOKEN6
+  # single moves (2:00 a.m.)
+  single_move $ROOM_ID $ACCESS_TOKEN1
+  single_move $ROOM_ID $ACCESS_TOKEN2
+  single_move $ROOM_ID $ACCESS_TOKEN3
+  single_move $ROOM_ID $ACCESS_TOKEN4
+  single_move $ROOM_ID $ACCESS_TOKEN5
+  single_move $ROOM_ID $ACCESS_TOKEN6
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
-[ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜1" ] || failwith "invalid turn"
+  [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "null" ] || failwith "invalid position"
+  [ $(echo "$JSON" | jq -r '.nowPosition[1].position') != "null" ] || failwith "invalid position"
 
-# single moves (3:00 a.m.)
-single_move $ROOM_ID $ACCESS_TOKEN1
+  # single moves (3:00 a.m.)
+  single_move $ROOM_ID $ACCESS_TOKEN1
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
-[ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "95" ] || failwith "invalid position"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "3" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
+  [ $(echo "$JSON" | jq -r '.nowPosition[0].position') = "95" ] || failwith "invalid position"
 
-# single moves (3:00 a.m.)
-single_move $ROOM_ID $ACCESS_TOKEN2
-single_move $ROOM_ID $ACCESS_TOKEN3
-single_move $ROOM_ID $ACCESS_TOKEN4
-single_move $ROOM_ID $ACCESS_TOKEN5
-single_move $ROOM_ID $ACCESS_TOKEN6
+  # single moves (3:00 a.m.)
+  single_move $ROOM_ID $ACCESS_TOKEN2
+  single_move $ROOM_ID $ACCESS_TOKEN3
+  single_move $ROOM_ID $ACCESS_TOKEN4
+  single_move $ROOM_ID $ACCESS_TOKEN5
+  single_move $ROOM_ID $ACCESS_TOKEN6
 
-# double move (4:00 a.m.)
-double_move $ROOM_ID $ACCESS_TOKEN1
+  # double move (4:00 a.m.)
+  double_move $ROOM_ID $ACCESS_TOKEN1
 
-# Check game is valid
-JSON=$(get_game $ROOM_ID)
-[ $(echo "$JSON" | jq -r '.phase') = "5" ] || failwith "invalid phase"
-[ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
+  # Check game is valid
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo "$JSON" | jq -r '.phase') = "5" ] || failwith "invalid phase"
+  [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
+}
+
+case "$1" in
+  test_case_1 )
+    test_case_1
+    ;;
+esac
 
 kill %1
 trap - SIGINT SIGTERM EXIT
