@@ -15,7 +15,7 @@ failwith(){
 
 trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
 
-TEST_NAME=$(date '+smoke-test-%Y%m%d%H%M%S')
+TEST_NAME=$(date '+e2e-test-%Y%m%d%H%M%S')
 SQLITE3_DB_FILE_PATH="$PWD/$TEST_NAME.sqlite3"
 SERVER_URI="http://localhost:8080"
 

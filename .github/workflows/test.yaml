@@ -8,7 +8,7 @@ on:
 permissions: read-all
 
 jobs:
-  smoke-test:
+  e2e-test:
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +27,7 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
       - run: opam install . --deps-only --with-test
-      - run: ./smoke_test.sh
+      - run: ./e2e_test.sh
 
   test-by-dune-runtest:
     strategy:
