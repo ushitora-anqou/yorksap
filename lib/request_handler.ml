@@ -553,6 +553,23 @@ let establish_store env ~sw dsn =
 let start_http_server env ~sw k =
   let game_data = load_game_data "london.json" in
 
+  let listen =
+    try
+      let[@warning "-8"] [ host; port ] =
+        Unix.getenv "BIND" |> String.split_on_char ':'
+      in
+      Eio.Net.getaddrinfo_stream ~service:port (Eio.Stdenv.net env) host
+      |> List.hd
+    with _ ->
+      Logs.warn (fun m -> m "BIND is unset or invalid; use localhost:8080");
+      `Tcp (Eio.Net.Ipaddr.V4.loopback, 8080)
+  in
+  (match listen with
+  | `Tcp (ipaddr, port) ->
+      Logs.info (fun m ->
+          m "listen tcp %s:%d" (Fmt.str "%a" Eio.Net.Ipaddr.pp ipaddr) port)
+  | _ -> ());
+
   let dsn = try Unix.getenv "DSN" with Not_found -> failwith "set DSN" in
   let store = establish_store env ~sw dsn in
 
@@ -589,4 +606,4 @@ let start_http_server env ~sw k =
   let handler =
     Logger.use @@ Cors.use cors @@ Router.use routes default_handler
   in
-  start_server env ~sw handler k
+  start_server env ~sw ~listen handler k

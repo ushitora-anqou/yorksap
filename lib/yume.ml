@@ -150,7 +150,7 @@ module Bare_server = struct
     let headers = headers |> Headers.to_list |> Cohttp.Header.of_list in
     (Http.Response.make ~status ~headers (), Cohttp_eio.Body.of_string body)
 
-  let start_server ~sw env port k callback =
+  let start_server ~listen ~sw env k callback =
     let callback _conn (req : Request.t) (body : Body.t) =
       (* Invoke the handler *)
       try callback req body
@@ -166,7 +166,7 @@ module Bare_server = struct
     let server = Cohttp_eio.Server.make ~callback () in
     let socket =
       Eio.Net.listen (Eio.Stdenv.net env) ~sw ~backlog:128 ~reuse_addr:true
-        (`Tcp (Eio.Net.Ipaddr.V4.loopback, port))
+        listen
     in
     Eio.Fiber.both k (fun () ->
         Cohttp_eio.Server.run ~on_error:raise socket server)
@@ -291,9 +291,9 @@ module Server = struct
         in
         respond ~status ""
 
-  let start_server env ~sw ?(port = 8080) ?error_handler (handler : handler) k :
-      unit =
-    Bare_server.start_server env ~sw port k
+  let start_server env ~sw ?(listen = `Tcp (Eio.Net.Ipaddr.V4.loopback, 8080))
+      ?error_handler (handler : handler) k : unit =
+    Bare_server.start_server ~listen env ~sw k
     @@ fun (req : Bare_server.Request.t) (body : Bare_server.Body.t) :
       Bare_server.Response.t ->
     (* Parse req *)
