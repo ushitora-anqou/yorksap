@@ -434,6 +434,13 @@ module Api_v1 = struct
       | "SECRET" -> Ok (`Secret loc)
       | _ -> Error "invalid ticket"
 
+    let may_skip_turns g =
+      let rec aux g =
+        if Game.get_game_status g <> `Continuing then g
+        else match Game.skip_turn g with Ok g -> aux g | Error _ -> g
+      in
+      aux g
+
     let handle_move t ~parse_request req =
       let room_id = Yume.Server.param ":id" req in
       match
@@ -464,7 +471,7 @@ module Api_v1 = struct
             in
             let* old_game = game |> Game.of_yojson ~game_data:t.game_data in
             let* new_game =
-              old_game |> Game.move_agent move
+              old_game |> Game.move_agent move |> Result.map may_skip_turns
               |> Result.map_error Error.to_string
             in
             Ok (old_game, new_game, user_turn)

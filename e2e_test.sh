@@ -66,6 +66,7 @@ get_game(){
   curl "http://localhost:8080/api/v1/game/$ROOM_ID"
 }
 
+# Test basic functionalities
 test_case_1(){
   # Create a room
   JSON=$(create_room)
@@ -180,9 +181,42 @@ test_case_1(){
   [ $(echo "$JSON" | jq -r '.turn') = "ゆ〜ざ〜2" ] || failwith "invalid turn"
 }
 
+# Test to check if turns are correctly skipped
+test_case_2(){
+  # Create a room
+  JSON=$(create_room)
+  ROOM_ID=$(echo $JSON | jq -r '.roomId')
+  ACCESS_TOKEN1=$(echo $JSON | jq -r '.accessToken')
+
+  # Register users
+  ACCESS_TOKEN2=$(register_user 2 $ROOM_ID)
+  ACCESS_TOKEN3=$(register_user 3 $ROOM_ID)
+  ACCESS_TOKEN4=$(register_user 4 $ROOM_ID)
+  ACCESS_TOKEN5=$(register_user 5 $ROOM_ID)
+  ACCESS_TOKEN6=$(register_user 6 $ROOM_ID)
+
+  for i in $(seq 1 22); do
+    single_move $ROOM_ID $ACCESS_TOKEN1
+    single_move $ROOM_ID $ACCESS_TOKEN2 || true
+    single_move $ROOM_ID $ACCESS_TOKEN3 || true
+    single_move $ROOM_ID $ACCESS_TOKEN4 || true
+    single_move $ROOM_ID $ACCESS_TOKEN5 || true
+    single_move $ROOM_ID $ACCESS_TOKEN6 || true
+  done
+  single_move $ROOM_ID $ACCESS_TOKEN1
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo $JSON | jq '.gameOver') = "false" ] || failwith "game should not be over"
+  single_move $ROOM_ID $ACCESS_TOKEN1
+  JSON=$(get_game $ROOM_ID)
+  [ $(echo $JSON | jq '.gameOver') = "true" ] || failwith "game should be over"
+}
+
 case "$1" in
   test_case_1 )
     test_case_1
+    ;;
+  test_case_2 )
+    test_case_2
     ;;
 esac
 
