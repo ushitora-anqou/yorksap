@@ -1,0 +1,14 @@
+.dockerignore
+.git
+.github
+.gitignore
+.ocamlformat
+Dockerfile
+LICENSE
+Makefile
+README.md
+_build/
+e2e-test-*
+e2e_test.sh
+misc
+yorksap.sqlite3*
